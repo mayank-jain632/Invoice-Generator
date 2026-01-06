@@ -1,10 +1,11 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
+from .settings import settings
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://localhost/invoice_automation")
+DATABASE_URL = settings.DATABASE_URL or os.getenv("DATABASE_URL", "postgresql+psycopg://localhost/invoice_automation")
 
-# Vercel Postgres uses postgres:// but SQLAlchemy needs postgresql://
+# Vercel/Supabase uses postgres:// but SQLAlchemy needs postgresql://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
 

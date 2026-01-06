@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     # app config
     DEBUG: bool = False
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    DATABASE_URL: str = ""
 
     # email
     SMTP_HOST: str = "smtp.gmail.com"

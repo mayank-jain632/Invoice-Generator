@@ -220,7 +220,7 @@ export default function EmployeesPage() {
                               type="number"
                               step="0.01"
                               value={editRate}
-                              onChange={ev => setEditRate(parseFloat(ev.target.value) || 0)}
+                              onChange={ev => setEditRate(ev.target.value)}
                             />
                             <span className="ml-1">/hr</span>
                           </div>
