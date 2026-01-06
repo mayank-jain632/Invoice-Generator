@@ -45,7 +45,12 @@ app.add_middleware(
     max_age=600,
 )
 
-INVOICE_DIR = Path("./generated_invoices")
+# Use /tmp for serverless (Vercel), otherwise local directory
+import os
+if os.getenv("VERCEL"):
+    INVOICE_DIR = Path("/tmp/generated_invoices")
+else:
+    INVOICE_DIR = Path("./generated_invoices")
 
 def invoice_number_for(employee_id: int, month_key: str) -> str:
     # simple deterministic-ish format; swap with your own numbering rules
