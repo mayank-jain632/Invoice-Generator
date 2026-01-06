@@ -1,0 +1,321 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Shell from "@/components/Shell";
+import { apiGet, apiPost } from "@/app/api";
+
+type Employee = { id: number; name: string; hourly_rate: number; lifetime_hours: number; email?: string | null };
+type Invoice = {
+  id: number; employee_id: number; month_key: string; hours: number; rate: number;
+  amount: number; invoice_number: string; approved: boolean; sent: boolean;
+};
+
+export default function InvoicesPage() {
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [monthKey, setMonthKey] = useState("2025-12");
+  const [selectedEmp, setSelectedEmp] = useState<Record<number, boolean>>({});
+  const [selectedInv, setSelectedInv] = useState<Record<number, boolean>>({});
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  async function refresh() {
+    setErr(null);
+    setLoading(true);
+    try {
+      const [emps, invs] = await Promise.all([
+        apiGet<Employee[]>("/employees"),
+        apiGet<Invoice[]>("/invoices"),
+      ]);
+      setEmployees(emps);
+      setInvoices(invs);
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { refresh(); }, []);
+
+  async function generate() {
+    setErr(null); setOk(null);
+    const ids = employees.filter(e => selectedEmp[e.id]).map(e => e.id);
+    if (ids.length === 0) {
+      setErr("Select at least one employee");
+      return;
+    }
+    try {
+      const resp = await apiPost("/invoices/generate", { month_key: monthKey, employee_ids: ids });
+      setOk(resp);
+      await refresh();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
+  async function approve() {
+    setErr(null); setOk(null);
+    const ids = invoices.filter(i => selectedInv[i.id]).map(i => i.id);
+    if (ids.length === 0) {
+      setErr("Select at least one invoice");
+      return;
+    }
+    try {
+      const resp = await apiPost("/invoices/approve", { invoice_ids: ids });
+      setOk(resp);
+      await refresh();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
+  async function approveOne(id: number) {
+    setErr(null); setOk(null);
+    try {
+      const resp = await apiPost("/invoices/approve", { invoice_ids: [id] });
+      setOk(resp);
+      await refresh();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
+  function selectAllEmployees() {
+    const newSelected: Record<number, boolean> = {};
+    employees.forEach(e => newSelected[e.id] = true);
+    setSelectedEmp(newSelected);
+  }
+
+  function deselectAllEmployees() {
+    setSelectedEmp({});
+  }
+
+  function selectAllInvoices() {
+    const newSelected: Record<number, boolean> = {};
+    invoices.forEach(i => newSelected[i.id] = true);
+    setSelectedInv(newSelected);
+  }
+
+  function deselectAllInvoices() {
+    setSelectedInv({});
+  }
+
+  async function send() {
+    setErr(null); setOk(null);
+    const ids = invoices.filter(i => selectedInv[i.id]).map(i => i.id);
+    if (ids.length === 0) {
+      setErr("Select at least one invoice");
+      return;
+    }
+    try {
+      const resp = await apiPost("/invoices/send", { invoice_ids: ids });
+      setOk(resp);
+      await refresh();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
+  const getStatusBadge = (sent: boolean, approved: boolean) => {
+    if (sent) return { text: "Sent", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
+    if (approved) return { text: "Approved", color: "bg-blue-500/20 text-blue-300 border-blue-500/30" };
+    return { text: "Draft", color: "bg-slate-500/20 text-slate-300 border-slate-500/30" };
+  };
+
+  return (
+    <Shell>
+      <div className="space-y-8">
+        {/* Header */}
+        <div>
+          <h2 className="text-3xl font-bold text-white mb-2">Invoices</h2>
+          <p className="text-slate-400">Generate, approve, and send professional invoices</p>
+        </div>
+
+        {/* Generate Invoices Section */}
+        <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm p-8">
+          <h3 className="text-lg font-semibold text-white mb-6">Generate Invoices</h3>
+          <div className="flex gap-3 items-end mb-6">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-slate-300 mb-2">Month</label>
+              <input
+                className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
+                value={monthKey}
+                onChange={e => setMonthKey(e.target.value)}
+              />
+            </div>
+            <button
+              onClick={generate}
+              className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 text-sm font-semibold transition-colors"
+            >
+              Generate PDFs
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-slate-300">Select employees:</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={selectAllEmployees}
+                  className="text-xs rounded-lg border border-slate-600 px-3 py-1.5 hover:bg-slate-800/60 text-slate-200 transition-colors"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={deselectAllEmployees}
+                  className="text-xs rounded-lg border border-slate-600 px-3 py-1.5 hover:bg-slate-800/60 text-slate-200 transition-colors"
+                >
+                  Deselect All
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {employees.map(e => (
+                <label
+                  key={e.id}
+                  className="flex items-center gap-3 p-4 rounded-lg border border-slate-700 hover:border-slate-600 bg-slate-800/20 hover:bg-slate-800/40 cursor-pointer transition-all"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!selectedEmp[e.id]}
+                    onChange={ev => setSelectedEmp({ ...selectedEmp, [e.id]: ev.target.checked })}
+                    className="rounded"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-white text-sm">{e.name}</div>
+                    <div className="text-xs text-slate-400">${e.hourly_rate.toFixed(2)}/hr</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Invoices List Section */}
+        <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm overflow-hidden">
+          <div className="px-8 py-6 border-b border-slate-700/50">
+            <h3 className="text-lg font-semibold text-white mb-4">All Invoices</h3>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={selectAllInvoices}
+                className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"
+              >
+                Select All
+              </button>
+              <button
+                onClick={deselectAllInvoices}
+                className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"
+              >
+                Deselect All
+              </button>
+              <button
+                onClick={approve}
+                className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"
+              >
+                Approve selected
+              </button>
+              <button
+                onClick={send}
+                className="rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm font-semibold transition-colors"
+              >
+                Send Selected
+              </button>
+              <button
+                onClick={refresh}
+                className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-800/50 border-b border-slate-700/50">
+                <tr>
+                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300 w-12">
+                    <input type="checkbox" className="rounded" />
+                  </th>
+                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Invoice #</th>
+                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Employee</th>
+                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Month</th>
+                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Hours</th>
+                  <th className="px-8 py-3 text-right text-xs font-semibold text-slate-300">Amount</th>
+                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Status</th>
+                  <th className="px-8 py-3 text-right text-xs font-semibold text-slate-300">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/30">
+                {loading ? (
+                  <tr><td colSpan={7} className="px-8 py-8 text-center text-slate-400">Loading...</td></tr>
+                ) : invoices.length === 0 ? (
+                  <tr><td colSpan={8} className="px-8 py-8 text-center text-slate-400">No invoices yet. Generate one above.</td></tr>
+                ) : (
+                  invoices.map(inv => {
+                    const emp = employees.find(e => e.id === inv.employee_id);
+                    const status = getStatusBadge(inv.sent, inv.approved);
+                    return (
+                      <tr key={inv.id} className="hover:bg-slate-800/30 transition-colors">
+                        <td className="px-8 py-4">
+                          <input
+                            type="checkbox"
+                            checked={!!selectedInv[inv.id]}
+                            onChange={ev => setSelectedInv({ ...selectedInv, [inv.id]: ev.target.checked })}
+                            className="rounded"
+                          />
+                        </td>
+                        <td className="px-8 py-4 text-sm font-mono text-blue-400">{inv.invoice_number}</td>
+                        <td className="px-8 py-4 text-sm font-medium text-white">{emp?.name || "Unknown"}</td>
+                        <td className="px-8 py-4 text-sm text-slate-300">{inv.month_key}</td>
+                        <td className="px-8 py-4 text-sm text-slate-300">{inv.hours.toFixed(2)}h</td>
+                        <td className="px-8 py-4 text-sm font-semibold text-white text-right">${inv.amount.toFixed(2)}</td>
+                        <td className="px-8 py-4 text-sm">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-xs font-medium ${status.color}`}>
+                            {status.text}
+                          </span>
+                        </td>
+                        <td className="px-8 py-4 text-sm text-right flex items-center gap-2 justify-end">
+                          <a
+                            href={`http://localhost:8000/invoices/${inv.id}/pdf`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs rounded-lg border border-slate-600 px-3 py-1.5 hover:bg-slate-800/60 text-slate-200 transition-colors"
+                          >
+                            Preview
+                          </a>
+                          {!inv.approved && (
+                            <button
+                              onClick={() => approveOne(inv.id)}
+                              className="text-xs rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 transition-colors"
+                            >
+                              Approve
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Feedback Messages */}
+        {err && (
+          <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+            <strong>Error:</strong> {err}
+          </div>
+        )}
+        {ok && (
+          <div className="text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4">
+            <strong>Success!</strong>
+            <pre className="mt-2 text-xs whitespace-pre-wrap">{JSON.stringify(ok, null, 2)}</pre>
+          </div>
+        )}
+      </div>
+    </Shell>
+  );
+}
