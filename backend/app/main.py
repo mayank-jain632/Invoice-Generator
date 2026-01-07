@@ -301,7 +301,7 @@ def regenerate_pdfs(db: Session = Depends(get_db), username: str = Depends(verif
     return {"regenerated": regenerated, "missing_before": missing, "total": db.query(models.Invoice).count()}
 
 @app.post("/invoices/approve")
-def approve_invoices(payload: schemas.InvoiceApproveIn, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+def approve_invoices(payload: schemas.ApproveIn, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     found = 0
     for inv_id in payload.invoice_ids:
         inv = db.query(models.Invoice).filter(models.Invoice.id == inv_id).first()
