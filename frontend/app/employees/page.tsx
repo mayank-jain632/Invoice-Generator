@@ -71,7 +71,8 @@ export default function EmployeesPage() {
   async function deleteEmployee(id: number) {
     setErr(null);
     try {
-      await fetch(`http://localhost:8000/employees/${id}`, { method: "DELETE" });
+      const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      await fetch(`${API}/employees/${id}`, { method: "DELETE" });
       await refresh();
     } catch (e: any) {
       setErr(e.message);
@@ -92,7 +93,8 @@ export default function EmployeesPage() {
       return;
     }
     try {
-      await fetch(`http://localhost:8000/employees/${id}`, {
+      const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      await fetch(`${API}/employees/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: editName, hourly_rate: Number(editRate), email: editEmail || null }),

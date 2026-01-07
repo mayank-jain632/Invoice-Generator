@@ -278,7 +278,7 @@ export default function InvoicesPage() {
                         </td>
                         <td className="px-8 py-4 text-sm text-right flex items-center gap-2 justify-end">
                           <a
-                            href={`http://localhost:8000/invoices/${inv.id}/pdf`}
+                            href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/invoices/${inv.id}/pdf`}
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs rounded-lg border border-slate-600 px-3 py-1.5 hover:bg-slate-800/60 text-slate-200 transition-colors"
