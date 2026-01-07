@@ -20,8 +20,8 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("app.log")
-    ]
+        # Only log to file if not on Vercel (Vercel uses /tmp which is ephemeral)
+    ] if not os.getenv("VERCEL") else [logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def invoice_number_for(employee_id: int, month_key: str) -> str:
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {"ok": True, "env": os.getenv("VERCEL", "local")}
 
 # --- Employees ---
 @app.post("/employees", response_model=schemas.EmployeeOut)
