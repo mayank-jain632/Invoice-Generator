@@ -3,11 +3,15 @@
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/.next",
   "devCommand": "cd frontend && npm run dev",
-  "installCommand": "cd frontend && npm install && cd ../backend && pip install -r requirements.txt",
+  "installCommand": "pip install -r backend/requirements.txt && cd frontend && npm install",
   "builds": [
     {
       "src": "backend/api/index.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb",
+        "runtime": "python3.11"
+      }
     },
     {
       "src": "frontend/package.json",
