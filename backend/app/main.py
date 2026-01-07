@@ -26,7 +26,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-Base.metadata.create_all(bind=engine)
+# Only create tables if not on Vercel (tables created once, not on each function invoke)
+if not os.getenv("VERCEL"):
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        logger.warning(f"Could not create tables on startup: {e}")
 
 app = FastAPI(
     title="Invoice Automation API",
