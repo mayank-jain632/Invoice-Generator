@@ -96,7 +96,7 @@ def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_d
     return emp
 
 @app.get("/employees", response_model=list[schemas.EmployeeOut])
-def list_employees(db: Session = Depends(get_db)):
+def list_employees(db: Session = Depends(get_db), username: str = Depends(verify_token)):
     try:
         employees = db.query(models.Employee).order_by(models.Employee.name.asc()).all()
         logger.info(f"Retrieved {len(employees)} employees")
@@ -106,7 +106,7 @@ def list_employees(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.put("/employees/{employee_id}")
-def update_employee(employee_id: int, payload: schemas.EmployeeCreate, db: Session = Depends(get_db)):
+def update_employee(employee_id: int, payload: schemas.EmployeeCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     emp = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
@@ -118,7 +118,7 @@ def update_employee(employee_id: int, payload: schemas.EmployeeCreate, db: Sessi
     return emp
 
 @app.delete("/employees/{employee_id}")
-def delete_employee(employee_id: int, db: Session = Depends(get_db)):
+def delete_employee(employee_id: int, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     emp = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
@@ -127,7 +127,7 @@ def delete_employee(employee_id: int, db: Session = Depends(get_db)):
     return {"deleted": employee_id}
 
 @app.get("/employees/{employee_id}/monthly_hours/{month_key}")
-def get_monthly_hours(employee_id: int, month_key: str, db: Session = Depends(get_db)):
+def get_monthly_hours(employee_id: int, month_key: str, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     month = (
         db.query(models.EmployeeMonth)
         .filter(models.EmployeeMonth.employee_id == employee_id, models.EmployeeMonth.month_key == month_key)
@@ -177,7 +177,7 @@ def ingest_timesheet(payload: schemas.TimesheetIn, db: Session = Depends(get_db)
 
 # --- Invoice generation ---
 @app.post("/invoices/generate", response_model=list[schemas.InvoiceOut])
-def generate_invoices(payload: schemas.InvoiceCreateIn, db: Session = Depends(get_db)):
+def generate_invoices(payload: schemas.InvoiceCreateIn, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     invoices_out = []
     for emp_id in payload.employee_ids:
         emp = db.query(models.Employee).filter(models.Employee.id == emp_id).first()
@@ -263,11 +263,11 @@ def generate_invoices(payload: schemas.InvoiceCreateIn, db: Session = Depends(ge
     return invoices_out
 
 @app.get("/invoices", response_model=list[schemas.InvoiceOut])
-def list_invoices(db: Session = Depends(get_db)):
+def list_invoices(db: Session = Depends(get_db), username: str = Depends(verify_token)):
     return db.query(models.Invoice).order_by(models.Invoice.created_at.desc()).all()
 
 @app.get("/invoices/{invoice_id}/pdf")
-def get_invoice_pdf(invoice_id: int, db: Session = Depends(get_db)):
+def get_invoice_pdf(invoice_id: int, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     inv = db.query(models.Invoice).filter(models.Invoice.id == invoice_id).first()
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -279,7 +279,7 @@ def get_invoice_pdf(invoice_id: int, db: Session = Depends(get_db)):
     return FileResponse(path=pdf, media_type="application/pdf", filename=pdf.name)
 
 @app.post("/invoices/regenerate_pdfs")
-def regenerate_pdfs(db: Session = Depends(get_db)):
+def regenerate_pdfs(db: Session = Depends(get_db), username: str = Depends(verify_token)):
     regenerated = 0
     missing = 0
     for inv in db.query(models.Invoice).all():
@@ -301,7 +301,7 @@ def regenerate_pdfs(db: Session = Depends(get_db)):
     return {"regenerated": regenerated, "missing_before": missing, "total": db.query(models.Invoice).count()}
 
 @app.post("/invoices/approve")
-def approve_invoices(payload: schemas.ApproveIn, db: Session = Depends(get_db)):
+def approve_invoices(payload: schemas.InvoiceApproveIn, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     found = 0
     for inv_id in payload.invoice_ids:
         inv = db.query(models.Invoice).filter(models.Invoice.id == inv_id).first()
