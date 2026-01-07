@@ -83,7 +83,13 @@ def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_d
 
 @app.get("/employees", response_model=list[schemas.EmployeeOut])
 def list_employees(db: Session = Depends(get_db)):
-    return db.query(models.Employee).order_by(models.Employee.name.asc()).all()
+    try:
+        employees = db.query(models.Employee).order_by(models.Employee.name.asc()).all()
+        logger.info(f"Retrieved {len(employees)} employees")
+        return employees
+    except Exception as e:
+        logger.error(f"Error fetching employees: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.put("/employees/{employee_id}")
 def update_employee(employee_id: int, payload: schemas.EmployeeCreate, db: Session = Depends(get_db)):
