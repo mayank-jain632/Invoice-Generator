@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     AUTH_USERNAME: str = "admin"
     AUTH_PASSWORD: str = "admin"
     SECRET_KEY: str = "change-this-secret-key-in-production"
+    # Supabase JWT secret for verifying Supabase-issued tokens
+    SUPABASE_JWT_SECRET: str = ""
+    # Comma-separated allowlist of emails that may access the app
+    ALLOWED_EMAILS: str = ""
 
     # email
     SMTP_HOST: str = "smtp.gmail.com"
