@@ -10,8 +10,6 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
     
     # auth
-    AUTH_USERNAME: str = "admin"
-    AUTH_PASSWORD: str = "admin"
     SECRET_KEY: str = "change-this-secret-key-in-production"
 
     # email
