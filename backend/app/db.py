@@ -13,7 +13,14 @@ if DATABASE_URL.startswith("postgres://"):
 # Use NullPool on Vercel (serverless, stateless functions) to avoid connection pool exhaustion
 # This disables pooling and creates a new connection for each request, then closes it
 if os.getenv("VERCEL"):
-    engine = create_engine(DATABASE_URL, poolclass=NullPool, connect_args={"connect_timeout": 5})
+    engine = create_engine(
+        DATABASE_URL, 
+        poolclass=NullPool,
+        connect_args={
+            "connect_timeout": 10,
+            "options": "-c statement_timeout=30000"
+        }
+    )
 else:
     engine = create_engine(DATABASE_URL)
     
