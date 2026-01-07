@@ -35,7 +35,8 @@ if not os.getenv("VERCEL"):
 
 app = FastAPI(
     title="Invoice Automation API",
-    debug=settings.DEBUG
+    debug=settings.DEBUG,
+    root_path="/api" if os.getenv("VERCEL") else ""
 )
 
 # CORS configuration - must be before other middleware
