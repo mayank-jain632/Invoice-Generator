@@ -6,25 +6,4 @@ backend_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 if backend_path not in sys.path:
     sys.path.insert(0, backend_path)
 
-try:
-    from app.main import app as fastapi_app
-    
-    # Wrap FastAPI app as a proper ASGI application
-    async def handler(scope, receive, send):
-        await fastapi_app(scope, receive, send)
-        
-except Exception as e:
-    import traceback
-    error_msg = f"Failed to import app from {backend_path}: {str(e)}\n{traceback.format_exc()}"
-    print(error_msg, file=sys.stderr)
-    
-    async def handler(scope, receive, send):
-        await send({
-            'type': 'http.response.start',
-            'status': 500,
-            'headers': [[b'content-type', b'application/json']],
-        })
-        await send({
-            'type': 'http.response.body',
-            'body': f'{{"error": "Backend initialization failed: {str(e)}"}}'.encode(),
-        })
+from app.main import app
