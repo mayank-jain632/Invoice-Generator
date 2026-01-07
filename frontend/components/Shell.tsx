@@ -1,6 +1,14 @@
 "use client";
+import { useRouter } from "next/navigation";
 
 export default function Shell({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+
+  function handleLogout() {
+    localStorage.removeItem("token");
+    router.push("/login");
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
       {/* Navigation Bar */}
@@ -19,7 +27,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <a href="/invoices" className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors">Invoices</a>
               </div>
             </div>
-            <div className="text-xs text-slate-400">v1.0</div>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </nav>
