@@ -13,7 +13,9 @@ from . import models, schemas
 from .invoice_pdf import generate_invoice_pdf
 from .emailer import send_timesheet_reminder, send_email
 from .settings import settings
+from .auth import verify_token, create_access_token, verify_credentials
 from sqlalchemy.exc import IntegrityError
+from pydantic import BaseModel
 
 # Configure logging
 logging.basicConfig(
@@ -68,9 +70,21 @@ def invoice_number_for(employee_id: int, month_key: str) -> str:
 def health():
     return {"ok": True, "env": os.getenv("VERCEL", "local")}
 
+# --- Auth ---
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/auth/login")
+def login(credentials: LoginRequest):
+    if verify_credentials(credentials.username, credentials.password):
+        access_token = create_access_token(data={"sub": credentials.username})
+        return {"access_token": access_token, "token_type": "bearer"}
+    raise HTTPException(status_code=401, detail="Invalid username or password")
+
 # --- Employees ---
 @app.post("/employees", response_model=schemas.EmployeeOut)
-def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_db)):
+def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     existing = db.query(models.Employee).filter(models.Employee.name == payload.name).first()
     if existing:
         raise HTTPException(status_code=409, detail="Employee name already exists")
