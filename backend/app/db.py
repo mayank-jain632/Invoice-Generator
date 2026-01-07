@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import NullPool
 import os
 from .settings import settings
 
@@ -9,7 +10,13 @@ DATABASE_URL = settings.DATABASE_URL or os.getenv("DATABASE_URL", "postgresql+ps
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
 
-engine = create_engine(DATABASE_URL)
+# Use NullPool on Vercel (serverless, stateless functions) to avoid connection pool exhaustion
+# This disables pooling and creates a new connection for each request, then closes it
+if os.getenv("VERCEL"):
+    engine = create_engine(DATABASE_URL, poolclass=NullPool, connect_args={"connect_timeout": 5})
+else:
+    engine = create_engine(DATABASE_URL)
+    
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
