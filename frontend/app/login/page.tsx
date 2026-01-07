@@ -1,7 +1,6 @@
 "use client";
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../lib/supabaseClient";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -14,26 +13,24 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
+    const API = process.env.NEXT_PUBLIC_API_URL || "/api";
+
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: username,
-        password,
+      const res = await fetch(`${API}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
       });
 
-      if (error) {
-        setError(error.message || "Login failed");
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.detail || "Login failed");
         setLoading(false);
         return;
       }
 
-      const accessToken = data.session?.access_token;
-      if (!accessToken) {
-        setError("No session token returned");
-        setLoading(false);
-        return;
-      }
-      // Keep localStorage token for AuthGuard and API headers
-      localStorage.setItem("token", accessToken);
+      const data = await res.json();
+      localStorage.setItem("token", data.access_token);
       router.push("/");
     } catch (err) {
       setError("Network error");
@@ -51,7 +48,7 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              Email
+              Username
             </label>
             <input
               type="text"

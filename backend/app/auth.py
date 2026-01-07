@@ -18,40 +18,21 @@ def create_access_token(data: dict):
     return encoded_jwt
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    # First, try decoding tokens issued by our backend
     try:
+        token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str | None = payload.get("sub")
-        if username:
-            return username
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials"
+            )
+        return username
     except JWTError:
-        pass
-
-    # Next, try decoding Supabase tokens if configured
-    supabase_secret = getattr(settings, "SUPABASE_JWT_SECRET", "")
-    if supabase_secret:
-        try:
-            payload = jwt.decode(token, supabase_secret, algorithms=[ALGORITHM])
-            # Supabase includes 'email' claim; fall back to 'sub' (user id)
-            email = payload.get("email")
-            identity = email or payload.get("sub")
-            if not identity:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
-
-            # Allowlist check if configured
-            allowed = getattr(settings, "ALLOWED_EMAILS", "")
-            if allowed:
-                allowed_set = {e.strip().lower() for e in allowed.split(",") if e.strip()}
-                if not email or email.lower() not in allowed_set:
-                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User not authorized")
-
-            return identity
-        except JWTError:
-            pass
-
-    # If neither decoding succeeded
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials"
+        )
 
 def verify_credentials(username: str, password: str) -> bool:
     """Verify username and password against environment variables"""

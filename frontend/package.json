@@ -10,8 +10,7 @@
     "next": "^15.1.11",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "react-hot-toast": "^2.6.0",
-    "@supabase/supabase-js": "^2.45.4"
+    "react-hot-toast": "^2.6.0"
   },
   "devDependencies": {
     "@types/node": "^22",
