@@ -5,12 +5,16 @@ class EmployeeCreate(BaseModel):
     name: str
     hourly_rate: float
     email: Optional[str] = None
+    start_date: Optional[str] = None
+    company: Optional[str] = None
 
 class EmployeeOut(BaseModel):
     id: int
     name: str
     hourly_rate: float
     email: Optional[str]
+    start_date: Optional[str]
+    company: Optional[str]
     lifetime_hours: float
 
     class Config:
@@ -47,3 +51,4 @@ class ApproveIn(BaseModel):
 
 class SendIn(BaseModel):
     invoice_ids: List[int]
+    to_emails: List[str]

@@ -9,6 +9,8 @@ class Employee(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     hourly_rate = Column(Float, nullable=False)
     email = Column(String, nullable=True)
+    start_date = Column(String, nullable=True)
+    company = Column(String, nullable=True)
 
     lifetime_hours = Column(Float, default=0.0)
     # hours tracked per month are in EmployeeMonth

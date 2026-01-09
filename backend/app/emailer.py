@@ -1,13 +1,22 @@
 import smtplib
 from email.message import EmailMessage
 from pathlib import Path
+from typing import Iterable
 from .settings import settings
 
-def send_email(subject: str, body: str, to_email: str, attachments: list[Path] | None = None):
+def send_email(subject: str, body: str, to_emails: str | Iterable[str], attachments: list[Path] | None = None):
+    if isinstance(to_emails, str):
+        recipients = [to_emails]
+    else:
+        recipients = [e for e in to_emails if e]
+
+    if not recipients:
+        raise ValueError("No recipients provided")
+
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = settings.FROM_EMAIL or settings.SMTP_USER
-    msg["To"] = to_email
+    msg["To"] = ", ".join(recipients)
     msg.set_content(body)
 
     attachments = attachments or []

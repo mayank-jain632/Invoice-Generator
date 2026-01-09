@@ -9,6 +9,8 @@ type Employee = {
   name: string;
   hourly_rate: number;
   email?: string | null;
+  start_date?: string | null;
+  company?: string | null;
   lifetime_hours: number;
 };
 
@@ -17,12 +19,16 @@ export default function EmployeesPage() {
   const [name, setName] = useState("");
   const [rate, setRate] = useState("");
   const [email, setEmail] = useState("");
+  const [company, setCompany] = useState("");
+  const [startDate, setStartDate] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editRate, setEditRate] = useState("");
   const [editEmail, setEditEmail] = useState("");
+  const [editCompany, setEditCompany] = useState("");
+  const [editStartDate, setEditStartDate] = useState("");
   const [monthKey, setMonthKey] = useState("2025-12");
   const [monthlyHours, setMonthlyHours] = useState<Record<number, number>>({});
 
@@ -55,13 +61,19 @@ export default function EmployeesPage() {
 
   async function addEmployee() {
     setErr(null);
-    if (!name || !rate) {
-      setErr("Name and hourly rate are required");
+    if (!name || !rate || !company || !startDate) {
+      setErr("Name, hourly rate, company, and start date are required");
       return;
     }
     try {
-      await apiPost("/employees", { name, hourly_rate: Number(rate), email: email || null });
-      setName(""); setRate(""); setEmail("");
+      await apiPost("/employees", {
+        name,
+        hourly_rate: Number(rate),
+        email: email || null,
+        company,
+        start_date: startDate,
+      });
+      setName(""); setRate(""); setEmail(""); setCompany(""); setStartDate("");
       await refresh();
     } catch (e: any) {
       setErr(e.message);
@@ -84,12 +96,14 @@ export default function EmployeesPage() {
     setEditName(emp.name);
     setEditRate(emp.hourly_rate.toString());
     setEditEmail(emp.email || "");
+    setEditCompany(emp.company || "");
+    setEditStartDate(emp.start_date || "");
   }
 
   async function saveEdit(id: number) {
     setErr(null);
-    if (!editName || !editRate) {
-      setErr("Name and hourly rate are required");
+    if (!editName || !editRate || !editCompany || !editStartDate) {
+      setErr("Name, hourly rate, company, and start date are required");
       return;
     }
     try {
@@ -97,7 +111,13 @@ export default function EmployeesPage() {
       await fetch(`${API}/employees/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editName, hourly_rate: Number(editRate), email: editEmail || null }),
+        body: JSON.stringify({
+          name: editName,
+          hourly_rate: Number(editRate),
+          email: editEmail || null,
+          company: editCompany,
+          start_date: editStartDate,
+        }),
       });
       setEditingId(null);
       await refresh();
@@ -134,7 +154,7 @@ export default function EmployeesPage() {
         <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm p-8">
           <h3 className="text-lg font-semibold text-white mb-6">Add New Employee</h3>
           <div className="space-y-4">
-            <div className="grid md:grid-cols-4 gap-4">
+            <div className="grid md:grid-cols-6 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-2">Full Name</label>
                 <input
@@ -152,6 +172,24 @@ export default function EmployeesPage() {
                   value={rate}
                   onChange={e => setRate(e.target.value)}
                   type="number"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-2">Company</label>
+                <input
+                  className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
+                  placeholder="Acme Corp"
+                  value={company}
+                  onChange={e => setCompany(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-2">Start Date</label>
+                <input
+                  className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
+                  value={startDate}
+                  onChange={e => setStartDate(e.target.value)}
+                  type="date"
                 />
               </div>
               <div>
@@ -188,6 +226,8 @@ export default function EmployeesPage() {
                 <tr>
                   <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Name</th>
                   <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Hourly Rate</th>
+                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Company</th>
+                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Start Date</th>
                   <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Month Hours</th>
                   <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Lifetime Hours</th>
                   <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Email</th>
@@ -196,9 +236,9 @@ export default function EmployeesPage() {
               </thead>
               <tbody className="divide-y divide-slate-700/30">
                 {loading ? (
-                  <tr><td colSpan={6} className="px-8 py-6 text-center text-slate-400">Loading...</td></tr>
+                  <tr><td colSpan={8} className="px-8 py-6 text-center text-slate-400">Loading...</td></tr>
                 ) : employees.length === 0 ? (
-                  <tr><td colSpan={6} className="px-8 py-6 text-center text-slate-400">No employees yet. Add one above.</td></tr>
+                  <tr><td colSpan={8} className="px-8 py-6 text-center text-slate-400">No employees yet. Add one above.</td></tr>
                 ) : (
                   employees.map(e => (
                     <tr key={e.id} className="hover:bg-slate-800/30 transition-colors">
@@ -228,6 +268,29 @@ export default function EmployeesPage() {
                           </div>
                         ) : (
                           `$${e.hourly_rate.toFixed(2)}/hr`
+                        )}
+                      </td>
+                      <td className="px-8 py-4 text-sm text-slate-300">
+                        {editingId === e.id ? (
+                          <input
+                            className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none w-40"
+                            value={editCompany}
+                            onChange={ev => setEditCompany(ev.target.value)}
+                          />
+                        ) : (
+                          e.company || "—"
+                        )}
+                      </td>
+                      <td className="px-8 py-4 text-sm text-slate-300">
+                        {editingId === e.id ? (
+                          <input
+                            className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none"
+                            type="date"
+                            value={editStartDate}
+                            onChange={ev => setEditStartDate(ev.target.value)}
+                          />
+                        ) : (
+                          e.start_date || "—"
                         )}
                       </td>
                       <td className="px-8 py-4 text-sm text-slate-300">{(monthlyHours[e.id] || 0).toFixed(1)}h</td>

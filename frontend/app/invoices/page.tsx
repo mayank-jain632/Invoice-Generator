@@ -16,6 +16,7 @@ export default function InvoicesPage() {
   const [monthKey, setMonthKey] = useState("2025-12");
   const [selectedEmp, setSelectedEmp] = useState<Record<number, boolean>>({});
   const [selectedInv, setSelectedInv] = useState<Record<number, boolean>>({});
+  const [sendTo, setSendTo] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -109,8 +110,16 @@ export default function InvoicesPage() {
       setErr("Select at least one invoice");
       return;
     }
+    const recipients = sendTo
+      .split(/[,\n;]/)
+      .map(e => e.trim())
+      .filter(Boolean);
+    if (recipients.length === 0) {
+      setErr("Enter at least one recipient email");
+      return;
+    }
     try {
-      const resp = await apiPost("/invoices/send", { invoice_ids: ids });
+      const resp = await apiPost("/invoices/send", { invoice_ids: ids, to_emails: recipients });
       setOk(resp);
       await refresh();
     } catch (e: any) {
@@ -198,6 +207,12 @@ export default function InvoicesPage() {
           <div className="px-8 py-6 border-b border-slate-700/50">
             <h3 className="text-lg font-semibold text-white mb-4">All Invoices</h3>
             <div className="flex gap-2 flex-wrap">
+              <input
+                className="flex-1 min-w-[220px] rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/20 transition-all"
+                placeholder="Send to: billing@company.com, finance@company.com"
+                value={sendTo}
+                onChange={e => setSendTo(e.target.value)}
+              />
               <button
                 onClick={selectAllInvoices}
                 className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"

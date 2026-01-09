@@ -88,7 +88,13 @@ def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_d
     existing = db.query(models.Employee).filter(models.Employee.name == payload.name).first()
     if existing:
         raise HTTPException(status_code=409, detail="Employee name already exists")
-    emp = models.Employee(name=payload.name, hourly_rate=payload.hourly_rate, email=payload.email)
+    emp = models.Employee(
+        name=payload.name,
+        hourly_rate=payload.hourly_rate,
+        email=payload.email,
+        start_date=payload.start_date,
+        company=payload.company,
+    )
     db.add(emp)
     db.commit()
     db.refresh(emp)
@@ -113,6 +119,8 @@ def update_employee(employee_id: int, payload: schemas.EmployeeCreate, db: Sessi
     emp.name = payload.name
     emp.hourly_rate = payload.hourly_rate
     emp.email = payload.email
+    emp.start_date = payload.start_date
+    emp.company = payload.company
     db.commit()
     db.refresh(emp)
     return emp
@@ -314,8 +322,8 @@ def approve_invoices(payload: schemas.ApproveIn, db: Session = Depends(get_db), 
 
 @app.post("/invoices/send")
 def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
-    if not settings.INVOICE_TO_EMAIL:
-        raise HTTPException(status_code=400, detail="INVOICE_TO_EMAIL not configured")
+    if not payload.to_emails:
+        raise HTTPException(status_code=400, detail="At least one recipient email is required")
 
     sent_count = 0
     for inv_id in payload.invoice_ids:
@@ -337,7 +345,7 @@ def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
             f"Attached is invoice {inv.invoice_number} for {emp.name}.\n\n"
             f"Hours: {inv.hours:.2f}\nRate: {inv.rate:.2f}\nTotal: {inv.amount:.2f}\n"
         )
-        send_email(subject, body, settings.INVOICE_TO_EMAIL, attachments=[pdf])
+        send_email(subject, body, payload.to_emails, attachments=[pdf])
 
         inv.sent = True
         sent_count += 1

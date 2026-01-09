@@ -19,8 +19,9 @@ export default function TimesheetsPage() {
       .map(line => {
         const parts = line.split(",").map(s => s.trim());
         if (parts.length < 2) throw new Error(`Invalid format: "${line}"`);
-        const name = parts[0];
-        const hours = Number(parts[1]);
+        const hasIdColumn = parts.length >= 3;
+        const name = hasIdColumn ? parts[1] : parts[0];
+        const hours = Number(hasIdColumn ? parts[2] : parts[1]);
         if (!name || Number.isNaN(hours)) throw new Error(`Invalid data: "${line}"`);
         return { name, hours };
       });
@@ -87,7 +88,7 @@ export default function TimesheetsPage() {
         {/* Ingest Timesheet */}
         <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm p-8">
           <h3 className="text-lg font-semibold text-white mb-4">Ingest Timesheet Data</h3>
-          <p className="text-sm text-slate-400 mb-4">Paste hours as: <code className="text-blue-300 bg-slate-950/50 px-2 py-1 rounded">Name, Hours</code> (one per line)</p>
+          <p className="text-sm text-slate-400 mb-4">Paste hours as: <code className="text-blue-300 bg-slate-950/50 px-2 py-1 rounded">Name, Hours</code> or <code className="text-blue-300 bg-slate-950/50 px-2 py-1 rounded">ID, Name, Hours</code> (one per line)</p>
           
           <div className="space-y-4">
             <div>
