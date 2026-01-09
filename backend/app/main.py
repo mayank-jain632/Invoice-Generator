@@ -206,6 +206,9 @@ def generate_invoices(payload: schemas.InvoiceCreateIn, db: Session = Depends(ge
                     out_dir=INVOICE_DIR,
                     invoice_number=existing.invoice_number,
                     employee_name=emp.name,
+                    employee_company=emp.company,
+                    employee_start_date=emp.start_date,
+                    employee_email=emp.email,
                     month_key=payload.month_key,
                     hours=float(existing.hours),
                     rate=float(existing.rate),
@@ -234,6 +237,9 @@ def generate_invoices(payload: schemas.InvoiceCreateIn, db: Session = Depends(ge
             out_dir=INVOICE_DIR,
             invoice_number=inv_no,
             employee_name=emp.name,
+            employee_company=emp.company,
+            employee_start_date=emp.start_date,
+            employee_email=emp.email,
             month_key=payload.month_key,
             hours=hours,
             rate=rate,
@@ -298,6 +304,9 @@ def regenerate_pdfs(db: Session = Depends(get_db), username: str = Depends(verif
                 out_dir=INVOICE_DIR,
                 invoice_number=inv.invoice_number,
                 employee_name=inv.employee.name if inv.employee else "Employee",
+                employee_company=inv.employee.company if inv.employee else None,
+                employee_start_date=inv.employee.start_date if inv.employee else None,
+                employee_email=inv.employee.email if inv.employee else None,
                 month_key=inv.month_key,
                 hours=float(inv.hours),
                 rate=float(inv.rate),
@@ -322,10 +331,12 @@ def approve_invoices(payload: schemas.ApproveIn, db: Session = Depends(get_db), 
 
 @app.post("/invoices/send")
 def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
-    if not payload.to_emails:
+    recipients = [e.strip() for e in payload.to_emails if e and e.strip()]
+    if not recipients:
         raise HTTPException(status_code=400, detail="At least one recipient email is required")
 
-    sent_count = 0
+    pending: list[tuple[models.Invoice, Path]] = []
+    month_keys: set[str] = set()
     for inv_id in payload.invoice_ids:
         inv = db.query(models.Invoice).filter(models.Invoice.id == inv_id).first()
         if not inv:
@@ -339,16 +350,19 @@ def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
         if not pdf or not pdf.exists():
             raise HTTPException(status_code=500, detail=f"Missing PDF for invoice {inv.invoice_number}")
 
-        emp = db.query(models.Employee).filter(models.Employee.id == inv.employee_id).first()
-        subject = f"Invoices — {inv.month_key} — {emp.name}"
-        body = (
-            f"Attached is invoice {inv.invoice_number} for {emp.name}.\n\n"
-            f"Hours: {inv.hours:.2f}\nRate: {inv.rate:.2f}\nTotal: {inv.amount:.2f}\n"
-        )
-        send_email(subject, body, payload.to_emails, attachments=[pdf])
+        pending.append((inv, pdf))
+        month_keys.add(inv.month_key)
 
+    if not pending:
+        return {"sent_count": 0}
+
+    month_list = ", ".join(sorted(month_keys))
+    subject = f"Invoices — {month_list}"
+    body = f"Attached are the invoices for {month_list}."
+    send_email(subject, body, recipients, attachments=[p for _, p in pending])
+
+    for inv, _ in pending:
         inv.sent = True
-        sent_count += 1
 
     db.commit()
-    return {"sent_count": sent_count}
+    return {"sent_count": len(pending)}

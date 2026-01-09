@@ -1,4 +1,5 @@
 from reportlab.lib.pagesizes import LETTER
+from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from pathlib import Path
 from datetime import datetime
@@ -8,6 +9,9 @@ def generate_invoice_pdf(
     out_dir: Path,
     invoice_number: str,
     employee_name: str,
+    employee_company: str | None,
+    employee_start_date: str | None,
+    employee_email: str | None,
     month_key: str,
     hours: float,
     rate: float,
@@ -19,51 +23,66 @@ def generate_invoice_pdf(
     c = canvas.Canvas(str(pdf_path), pagesize=LETTER)
     w, h = LETTER
 
-    y = h - 60
-    c.setFont("Helvetica-Bold", 18)
-    c.drawString(50, y, "INVOICE")
+    left = 50
+    right = w - 50
+    bar_height = 40
+    top_bar_y = h - 80
+    bottom_bar_y = 40
 
-    y -= 30
-    c.setFont("Helvetica", 10)
-    c.drawString(50, y, f"Invoice #: {invoice_number}")
-    c.drawString(300, y, f"Date: {datetime.utcnow().date().isoformat()}")
+    c.setFillColor(colors.HexColor("#F2F2F2"))
+    c.rect(left - 10, top_bar_y, w - 2 * (left - 10), bar_height, stroke=0, fill=1)
+    c.rect(left - 10, bottom_bar_y, w - 2 * (left - 10), bar_height, stroke=0, fill=1)
+    c.setFillColor(colors.black)
 
-    y -= 25
+    date_str = datetime.utcnow().strftime("%d-%b-%y").lstrip("0")
+    currency_label = "$" if settings.DEFAULT_CURRENCY.upper() == "USD" else settings.DEFAULT_CURRENCY
+
     c.setFont("Helvetica-Bold", 11)
-    c.drawString(50, y, settings.COMPANY_NAME)
-    y -= 14
-    c.setFont("Helvetica", 10)
-    c.drawString(50, y, settings.COMPANY_ADDRESS)
-    y -= 14
-    c.drawString(50, y, settings.COMPANY_EMAIL)
+    c.drawString(left, top_bar_y + 14, settings.COMPANY_NAME)
+    c.setFont("Helvetica", 9)
+    c.drawString(right - 200, top_bar_y + 20, "Invoice Number")
+    c.drawString(right - 200, top_bar_y + 8, "Invoice Date")
+    c.setFont("Helvetica-Bold", 9)
+    c.drawRightString(right, top_bar_y + 20, invoice_number)
+    c.drawRightString(right, top_bar_y + 8, date_str)
 
-    y -= 30
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(50, y, "Bill To:")
-    y -= 14
-    c.setFont("Helvetica", 10)
-    c.drawString(50, y, employee_name)
-
-    y -= 30
+    y = top_bar_y - 40
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(50, y, "Description")
-    c.drawString(300, y, "Hours")
-    c.drawString(360, y, "Rate")
-    c.drawString(440, y, "Amount")
-
+    c.drawString(left, y, "Employee")
+    y -= 14
+    c.setFont("Helvetica", 9)
+    c.drawString(left, y, f"Name: {employee_name}")
     y -= 12
-    c.line(50, y, 550, y)
-    y -= 18
+    c.drawString(left, y, f"Company: {employee_company or 'N/A'}")
+    y -= 12
+    c.drawString(left, y, f"Start Date: {employee_start_date or 'N/A'}")
+    y -= 12
+    c.drawString(left, y, f"Email: {employee_email or 'N/A'}")
+    y -= 12
+    c.drawString(left, y, f"Month: {month_key}")
 
-    c.setFont("Helvetica", 10)
-    c.drawString(50, y, f"Work performed ({month_key})")
-    c.drawRightString(340, y, f"{hours:.2f}")
-    c.drawRightString(420, y, f"{rate:.2f}")
-    c.drawRightString(550, y, f"{amount:.2f} {settings.DEFAULT_CURRENCY}")
+    y -= 26
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(left, y, "Description")
+    c.drawRightString(right - 160, y, "Hours")
+    c.drawRightString(right - 80, y, "Rate")
+    c.drawRightString(right, y, "Amount")
 
-    y -= 30
-    c.setFont("Helvetica-Bold", 12)
-    c.drawRightString(550, y, f"Total: {amount:.2f} {settings.DEFAULT_CURRENCY}")
+    y -= 10
+    c.line(left, y, right, y)
+    y -= 16
+
+    c.setFont("Helvetica", 9)
+    c.drawString(left, y, "Work performed")
+    c.drawRightString(right - 160, y, f"{hours:.2f}")
+    c.drawRightString(right - 80, y, f"{currency_label}{rate:,.2f}")
+    c.drawRightString(right, y, f"{currency_label}{amount:,.2f}")
+
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(left, bottom_bar_y + 14, "Thanks for your business")
+    c.setFont("Helvetica-Bold", 10)
+    c.drawRightString(right - 60, bottom_bar_y + 14, "Total")
+    c.drawRightString(right, bottom_bar_y + 14, f"{currency_label}{amount:,.2f}")
 
     c.showPage()
     c.save()
