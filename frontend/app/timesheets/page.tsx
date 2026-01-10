@@ -41,48 +41,13 @@ export default function TimesheetsPage() {
     }
   }
 
-  async function sendReminder() {
-    setErr(null); setOk(null);
-    setLoading(true);
-    try {
-      const resp = await apiPost(`/reminders/send?month_key=${encodeURIComponent(monthKey)}`);
-      setOk(resp);
-    } catch (e: any) {
-      setErr(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <Shell>
       <div className="space-y-8">
         {/* Header */}
         <div>
           <h2 className="text-3xl font-bold text-white mb-2">Timesheets</h2>
-          <p className="text-slate-400">Ingest hours and send reminder emails</p>
-        </div>
-
-        {/* Send Reminder */}
-        <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm p-8">
-          <h3 className="text-lg font-semibold text-white mb-4">Send Reminder Email</h3>
-          <div className="flex gap-3 items-end">
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-slate-300 mb-2">Month</label>
-              <input
-                className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                value={monthKey}
-                onChange={e => setMonthKey(e.target.value)}
-              />
-            </div>
-            <button
-              onClick={sendReminder}
-              disabled={loading}
-              className="rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white px-6 py-2.5 text-sm font-semibold transition-colors"
-            >
-              {loading ? "Sending..." : "Send Email"}
-            </button>
-          </div>
+          <p className="text-slate-400">Ingest hours for invoice generation</p>
         </div>
 
         {/* Ingest Timesheet */}

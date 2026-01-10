@@ -42,7 +42,7 @@ def generate_invoice_pdf(
     currency_label = "$" if settings.DEFAULT_CURRENCY.upper() == "USD" else settings.DEFAULT_CURRENCY
 
     c.setFont("Helvetica-Bold", 11)
-    c.drawString(left, top_bar_y + 14, employee_preferred_vendor or settings.COMPANY_NAME)
+    c.drawString(left, top_bar_y + 14, employee_company or settings.COMPANY_NAME)
     c.setFont("Helvetica", 9)
     c.drawString(right - 200, top_bar_y + 20, "Invoice Number")
     c.drawString(right - 200, top_bar_y + 8, "Invoice Date")
@@ -57,7 +57,7 @@ def generate_invoice_pdf(
     c.setFont("Helvetica", 9)
     c.drawString(left, y, f"Name: {employee_name}")
     y -= 12
-    c.drawString(left, y, f"Company: {employee_company or 'N/A'}")
+    c.drawString(left, y, f"Preferred Vendor: {employee_preferred_vendor or 'N/A'}")
 
     y -= 26
     c.setFont("Helvetica-Bold", 9)

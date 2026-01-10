@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     FROM_EMAIL: str = ""
     REMINDER_TO_EMAIL: str = ""   # where reminders go (e.g., manager, timesheet inbox)
     INVOICE_TO_EMAIL: str = ""    # where invoices are sent
+    CRON_SECRET: str = ""
 
     # business config
     COMPANY_NAME: str = "Your Company LLC"

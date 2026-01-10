@@ -83,6 +83,21 @@ def login(credentials: LoginRequest):
     raise HTTPException(status_code=401, detail="Invalid username or password")
 
 # --- Employees ---
+@app.post("/vendors", response_model=schemas.VendorOut)
+def create_vendor(payload: schemas.VendorCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    existing = db.query(models.Vendor).filter(models.Vendor.name == payload.name).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Vendor name already exists")
+    vendor = models.Vendor(name=payload.name, email=payload.email)
+    db.add(vendor)
+    db.commit()
+    db.refresh(vendor)
+    return vendor
+
+@app.get("/vendors", response_model=list[schemas.VendorOut])
+def list_vendors(db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    return db.query(models.Vendor).order_by(models.Vendor.name.asc()).all()
+
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     existing = db.query(models.Employee).filter(models.Employee.name == payload.name).first()
@@ -94,7 +109,7 @@ def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_d
         email=payload.email,
         start_date=payload.start_date,
         company=payload.company,
-        preferred_vendor=payload.preferred_vendor,
+        preferred_vendor_id=payload.preferred_vendor_id,
     )
     db.add(emp)
     db.commit()
@@ -122,7 +137,7 @@ def update_employee(employee_id: int, payload: schemas.EmployeeCreate, db: Sessi
     emp.email = payload.email
     emp.start_date = payload.start_date
     emp.company = payload.company
-    emp.preferred_vendor = payload.preferred_vendor
+    emp.preferred_vendor_id = payload.preferred_vendor_id
     db.commit()
     db.refresh(emp)
     return emp
@@ -152,6 +167,36 @@ def send_reminder(month_key: str):
         raise HTTPException(status_code=400, detail="REMINDER_TO_EMAIL not configured")
     send_timesheet_reminder(month_key)
     return {"sent": True, "month_key": month_key}
+
+@app.post("/reminders/monthly-vendor")
+def send_monthly_vendor_reminder(token: str | None = None, db: Session = Depends(get_db)):
+    if settings.CRON_SECRET:
+        if not token or token != settings.CRON_SECRET:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    from datetime import date
+
+    today = date.today()
+    year = today.year
+    month = today.month - 1
+    if month == 0:
+        month = 12
+        year -= 1
+    month_key = f"{year}-{month:02d}"
+
+    vendors = db.query(models.Vendor).all()
+    bcc_emails = [v.email for v in vendors if v.email]
+    if not bcc_emails:
+        raise HTTPException(status_code=400, detail="No vendor emails configured")
+
+    to_email = settings.FROM_EMAIL or settings.SMTP_USER
+    if not to_email:
+        raise HTTPException(status_code=400, detail="FROM_EMAIL or SMTP_USER not configured")
+
+    subject = f"Invoice request — {month_key}"
+    body = f"Hi,\n\nPlease send the invoice for {month_key}.\n\nThank you."
+    send_email(subject, body, to_email, bcc_emails=bcc_emails)
+    return {"sent": True, "month_key": month_key, "bcc_count": len(bcc_emails)}
 
 # --- Timesheet ingestion ---
 @app.post("/timesheets/ingest")
@@ -211,7 +256,7 @@ def generate_invoices(payload: schemas.InvoiceCreateIn, db: Session = Depends(ge
                     employee_company=emp.company,
                     employee_start_date=emp.start_date,
                     employee_email=emp.email,
-                    employee_preferred_vendor=emp.preferred_vendor,
+                    employee_preferred_vendor=emp.preferred_vendor.name if emp.preferred_vendor else None,
                     month_key=payload.month_key,
                     hours=float(existing.hours),
                     rate=float(existing.rate),
@@ -243,7 +288,7 @@ def generate_invoices(payload: schemas.InvoiceCreateIn, db: Session = Depends(ge
             employee_company=emp.company,
             employee_start_date=emp.start_date,
             employee_email=emp.email,
-            employee_preferred_vendor=emp.preferred_vendor,
+            employee_preferred_vendor=emp.preferred_vendor.name if emp.preferred_vendor else None,
             month_key=payload.month_key,
             hours=hours,
             rate=rate,
@@ -293,11 +338,28 @@ def get_invoice_pdf(
     inv = db.query(models.Invoice).filter(models.Invoice.id == invoice_id).first()
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    if not inv.pdf_path:
-        raise HTTPException(status_code=404, detail="No PDF available for this invoice")
-    pdf = Path(inv.pdf_path)
-    if not pdf.exists():
-        raise HTTPException(status_code=404, detail="PDF file missing")
+    pdf = Path(inv.pdf_path) if inv.pdf_path else None
+    if not pdf or not pdf.exists():
+        emp = db.query(models.Employee).filter(models.Employee.id == inv.employee_id).first()
+        if not emp:
+            raise HTTPException(status_code=404, detail="Employee not found for invoice")
+        pdf_path = generate_invoice_pdf(
+            out_dir=INVOICE_DIR,
+            invoice_number=inv.invoice_number,
+            employee_name=emp.name,
+            employee_company=emp.company,
+            employee_start_date=emp.start_date,
+            employee_email=emp.email,
+            employee_preferred_vendor=emp.preferred_vendor.name if emp.preferred_vendor else None,
+            month_key=inv.month_key,
+            hours=float(inv.hours),
+            rate=float(inv.rate),
+            amount=float(inv.amount),
+        )
+        inv.pdf_path = str(pdf_path)
+        db.commit()
+        db.refresh(inv)
+        pdf = Path(inv.pdf_path)
     return FileResponse(path=pdf, media_type="application/pdf", filename=pdf.name)
 
 @app.post("/invoices/regenerate_pdfs")
@@ -315,7 +377,7 @@ def regenerate_pdfs(db: Session = Depends(get_db), username: str = Depends(verif
                 employee_company=inv.employee.company if inv.employee else None,
                 employee_start_date=inv.employee.start_date if inv.employee else None,
                 employee_email=inv.employee.email if inv.employee else None,
-                employee_preferred_vendor=inv.employee.preferred_vendor if inv.employee else None,
+                employee_preferred_vendor=inv.employee.preferred_vendor.name if inv.employee and inv.employee.preferred_vendor else None,
                 month_key=inv.month_key,
                 hours=float(inv.hours),
                 rate=float(inv.rate),
@@ -350,8 +412,6 @@ def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
         inv = db.query(models.Invoice).filter(models.Invoice.id == inv_id).first()
         if not inv:
             continue
-        if not inv.approved:
-            raise HTTPException(status_code=400, detail=f"Invoice {inv.invoice_number} is not approved")
         if inv.sent:
             continue
 

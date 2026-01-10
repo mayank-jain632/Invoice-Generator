@@ -1,13 +1,25 @@
 from pydantic import BaseModel
 from typing import Optional, List
 
+class VendorCreate(BaseModel):
+    name: str
+    email: str
+
+class VendorOut(BaseModel):
+    id: int
+    name: str
+    email: str
+
+    class Config:
+        from_attributes = True
+
 class EmployeeCreate(BaseModel):
     name: str
     hourly_rate: float
     email: Optional[str] = None
     start_date: Optional[str] = None
     company: Optional[str] = None
-    preferred_vendor: Optional[str] = None
+    preferred_vendor_id: Optional[int] = None
 
 class EmployeeOut(BaseModel):
     id: int
@@ -16,7 +28,7 @@ class EmployeeOut(BaseModel):
     email: Optional[str]
     start_date: Optional[str]
     company: Optional[str]
-    preferred_vendor: Optional[str]
+    preferred_vendor_id: Optional[int]
     lifetime_hours: float
 
     class Config:

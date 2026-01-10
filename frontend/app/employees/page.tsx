@@ -11,12 +11,21 @@ type Employee = {
   email?: string | null;
   start_date?: string | null;
   company?: string | null;
-  preferred_vendor?: string | null;
+  preferred_vendor_id?: number | null;
   lifetime_hours: number;
+};
+
+type Vendor = {
+  id: number;
+  name: string;
+  email: string;
 };
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [vendorName, setVendorName] = useState("");
+  const [vendorEmail, setVendorEmail] = useState("");
   const [name, setName] = useState("");
   const [rate, setRate] = useState("");
   const [email, setEmail] = useState("");
@@ -40,7 +49,9 @@ export default function EmployeesPage() {
     setLoading(true);
     try {
       const emps = await apiGet<Employee[]>("/employees");
+      const vends = await apiGet<Vendor[]>("/vendors");
       setEmployees(emps);
+      setVendors(vends);
       
       // Fetch monthly hours for each employee
       const hours: Record<number, number> = {};
@@ -75,7 +86,7 @@ export default function EmployeesPage() {
         email: email || null,
         company,
         start_date: startDate,
-        preferred_vendor: preferredVendor,
+        preferred_vendor_id: Number(preferredVendor),
       });
       setName(""); setRate(""); setEmail(""); setCompany(""); setStartDate(""); setPreferredVendor("");
       await refresh();
@@ -102,7 +113,7 @@ export default function EmployeesPage() {
     setEditEmail(emp.email || "");
     setEditCompany(emp.company || "");
     setEditStartDate(emp.start_date || "");
-    setEditPreferredVendor(emp.preferred_vendor || "");
+    setEditPreferredVendor(emp.preferred_vendor_id ? emp.preferred_vendor_id.toString() : "");
   }
 
   async function saveEdit(id: number) {
@@ -122,7 +133,7 @@ export default function EmployeesPage() {
           email: editEmail || null,
           company: editCompany,
           start_date: editStartDate,
-          preferred_vendor: editPreferredVendor,
+          preferred_vendor_id: Number(editPreferredVendor),
         }),
       });
       setEditingId(null);
@@ -134,6 +145,21 @@ export default function EmployeesPage() {
 
   async function cancelEdit() {
     setEditingId(null);
+  }
+
+  async function addVendor() {
+    setErr(null);
+    if (!vendorName || !vendorEmail) {
+      setErr("Vendor name and email are required");
+      return;
+    }
+    try {
+      await apiPost("/vendors", { name: vendorName, email: vendorEmail });
+      setVendorName(""); setVendorEmail("");
+      await refresh();
+    } catch (e: any) {
+      setErr(e.message);
+    }
   }
 
   return (
@@ -191,12 +217,16 @@ export default function EmployeesPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-2">Preferred Vendor</label>
-                <input
+                <select
                   className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                  placeholder="Your Vendor Name"
                   value={preferredVendor}
                   onChange={e => setPreferredVendor(e.target.value)}
-                />
+                >
+                  <option value="">Select vendor</option>
+                  {vendors.map(v => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-2">Start Date</label>
@@ -227,6 +257,48 @@ export default function EmployeesPage() {
               </div>
             </div>
             {err && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3">{err}</div>}
+          </div>
+        </div>
+
+        {/* Vendors */}
+        <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm p-8">
+          <h3 className="text-lg font-semibold text-white mb-6">Preferred Vendors</h3>
+          <div className="grid md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-2">Company Name</label>
+              <input
+                className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
+                placeholder="Vendor Co."
+                value={vendorName}
+                onChange={e => setVendorName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-2">Vendor Email</label>
+              <input
+                className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
+                placeholder="billing@vendor.com"
+                value={vendorEmail}
+                onChange={e => setVendorEmail(e.target.value)}
+                type="email"
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={addVendor}
+                className="w-full rounded-lg bg-slate-700 hover:bg-slate-600 text-white px-4 py-2.5 text-sm font-semibold transition-colors"
+              >
+                Add Vendor
+              </button>
+            </div>
+          </div>
+          <div className="mt-6 space-y-2 text-sm text-slate-300">
+            {vendors.length === 0 ? "No vendors yet." : vendors.map(v => (
+              <div key={v.id} className="flex items-center justify-between border border-slate-700/40 rounded-lg px-4 py-2">
+                <span>{v.name}</span>
+                <span className="text-slate-400">{v.email}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -299,13 +371,18 @@ export default function EmployeesPage() {
                       </td>
                       <td className="px-8 py-4 text-sm text-slate-300">
                         {editingId === e.id ? (
-                          <input
+                          <select
                             className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none w-40"
                             value={editPreferredVendor}
                             onChange={ev => setEditPreferredVendor(ev.target.value)}
-                          />
+                          >
+                            <option value="">Select vendor</option>
+                            {vendors.map(v => (
+                              <option key={v.id} value={v.id}>{v.name}</option>
+                            ))}
+                          </select>
                         ) : (
-                          e.preferred_vendor || "—"
+                          vendors.find(v => v.id === Number(e.preferred_vendor_id))?.name || "—"
                         )}
                       </td>
                       <td className="px-8 py-4 text-sm text-slate-300">

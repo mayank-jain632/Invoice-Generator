@@ -57,33 +57,6 @@ export default function InvoicesPage() {
     }
   }
 
-  async function approve() {
-    setErr(null); setOk(null);
-    const ids = invoices.filter(i => selectedInv[i.id]).map(i => i.id);
-    if (ids.length === 0) {
-      setErr("Select at least one invoice");
-      return;
-    }
-    try {
-      const resp = await apiPost("/invoices/approve", { invoice_ids: ids });
-      setOk(resp);
-      await refresh();
-    } catch (e: any) {
-      setErr(e.message);
-    }
-  }
-
-  async function approveOne(id: number) {
-    setErr(null); setOk(null);
-    try {
-      const resp = await apiPost("/invoices/approve", { invoice_ids: [id] });
-      setOk(resp);
-      await refresh();
-    } catch (e: any) {
-      setErr(e.message);
-    }
-  }
-
   function selectAllEmployees() {
     const newSelected: Record<number, boolean> = {};
     employees.forEach(e => newSelected[e.id] = true);
@@ -128,9 +101,8 @@ export default function InvoicesPage() {
     }
   }
 
-  const getStatusBadge = (sent: boolean, approved: boolean) => {
+  const getStatusBadge = (sent: boolean) => {
     if (sent) return { text: "Sent", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
-    if (approved) return { text: "Approved", color: "bg-blue-500/20 text-blue-300 border-blue-500/30" };
     return { text: "Draft", color: "bg-slate-500/20 text-slate-300 border-slate-500/30" };
   };
 
@@ -227,12 +199,6 @@ export default function InvoicesPage() {
                 Deselect All
               </button>
               <button
-                onClick={approve}
-                className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"
-              >
-                Approve selected
-              </button>
-              <button
                 onClick={send}
                 className="rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm font-semibold transition-colors"
               >
@@ -271,7 +237,7 @@ export default function InvoicesPage() {
                 ) : (
                   invoices.map(inv => {
                     const emp = employees.find(e => e.id === inv.employee_id);
-                    const status = getStatusBadge(inv.sent, inv.approved);
+                    const status = getStatusBadge(inv.sent);
                     const pdfUrl = `${process.env.NEXT_PUBLIC_API_URL || "/api"}/invoices/${inv.id}/pdf${token ? `?token=${encodeURIComponent(token)}` : ""}`;
                     return (
                       <tr key={inv.id} className="hover:bg-slate-800/30 transition-colors">
@@ -302,14 +268,6 @@ export default function InvoicesPage() {
                           >
                             Preview
                           </a>
-                          {!inv.approved && (
-                            <button
-                              onClick={() => approveOne(inv.id)}
-                              className="text-xs rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 transition-colors"
-                            >
-                              Approve
-                            </button>
-                          )}
                         </td>
                       </tr>
                     );

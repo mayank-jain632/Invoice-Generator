@@ -3,6 +3,15 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from .db import Base
 
+class Vendor(Base):
+    __tablename__ = "vendors"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    employees = relationship("Employee", back_populates="preferred_vendor")
+
 class Employee(Base):
     __tablename__ = "employees"
     id = Column(Integer, primary_key=True, index=True)
@@ -11,13 +20,14 @@ class Employee(Base):
     email = Column(String, nullable=True)
     start_date = Column(String, nullable=True)
     company = Column(String, nullable=True)
-    preferred_vendor = Column(String, nullable=True)
+    preferred_vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=True)
 
     lifetime_hours = Column(Float, default=0.0)
     # hours tracked per month are in EmployeeMonth
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    preferred_vendor = relationship("Vendor", back_populates="employees")
     months = relationship("EmployeeMonth", back_populates="employee", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="employee", cascade="all, delete-orphan")
 

@@ -4,7 +4,13 @@ from pathlib import Path
 from typing import Iterable
 from .settings import settings
 
-def send_email(subject: str, body: str, to_emails: str | Iterable[str], attachments: list[Path] | None = None):
+def send_email(
+    subject: str,
+    body: str,
+    to_emails: str | Iterable[str],
+    attachments: list[Path] | None = None,
+    bcc_emails: Iterable[str] | None = None,
+):
     if isinstance(to_emails, str):
         recipients = [to_emails]
     else:
@@ -12,11 +18,14 @@ def send_email(subject: str, body: str, to_emails: str | Iterable[str], attachme
 
     if not recipients:
         raise ValueError("No recipients provided")
+    bcc = [e for e in (bcc_emails or []) if e]
 
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = settings.FROM_EMAIL or settings.SMTP_USER
     msg["To"] = ", ".join(recipients)
+    if bcc:
+        msg["Bcc"] = ", ".join(bcc)
     msg.set_content(body)
 
     attachments = attachments or []
