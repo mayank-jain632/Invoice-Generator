@@ -439,12 +439,20 @@ def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
 
 # --- Analytics ---
 @app.get("/analytics/company_totals", response_model=list[schemas.CompanyTotalsOut])
-def company_totals(month_key: str, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+def company_totals(month_key: str | None = None, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    if not month_key:
+        month_key = (
+            db.query(func.max(models.Invoice.month_key))
+            .filter(models.Invoice.sent.is_(True))
+            .scalar()
+        )
+        if not month_key:
+            return []
     company_expr = func.coalesce(models.Employee.company, "Unassigned")
     rows = (
         db.query(company_expr.label("company"), func.sum(models.Invoice.amount).label("total_amount"))
         .join(models.Invoice, models.Invoice.employee_id == models.Employee.id)
-        .filter(models.Invoice.month_key == month_key)
+        .filter(models.Invoice.month_key == month_key, models.Invoice.sent.is_(True))
         .group_by(company_expr)
         .order_by(company_expr.asc())
         .all()
@@ -484,6 +492,7 @@ def mark_company_paid(payload: schemas.CompanyTotalsIn, db: Session = Depends(ge
 def earnings(db: Session = Depends(get_db), username: str = Depends(verify_token)):
     rows = (
         db.query(models.Invoice.month_key, func.sum(models.Invoice.amount).label("total_amount"))
+        .filter(models.Invoice.sent.is_(True))
         .group_by(models.Invoice.month_key)
         .order_by(models.Invoice.month_key.asc())
         .all()

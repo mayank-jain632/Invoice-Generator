@@ -38,12 +38,15 @@ export default function AnalyticsPage() {
     setErr(null);
     setLoading(true);
     try {
-      const [companyTotals, earningsSeries] = await Promise.all([
-        apiGet<CompanyTotal[]>(`/analytics/company_totals?month_key=${encodeURIComponent(monthKey)}`),
-        apiGet<EarningsPoint[]>("/analytics/earnings"),
-      ]);
-      setTotals(companyTotals);
+      const earningsSeries = await apiGet<EarningsPoint[]>("/analytics/earnings");
       setEarnings(earningsSeries);
+      const latestMonth = earningsSeries.length > 0 ? earningsSeries[earningsSeries.length - 1].month_key : null;
+      if (latestMonth && latestMonth !== monthKey) {
+        setMonthKey(latestMonth);
+        return;
+      }
+      const companyTotals = await apiGet<CompanyTotal[]>(`/analytics/company_totals?month_key=${encodeURIComponent(monthKey)}`);
+      setTotals(companyTotals);
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -92,7 +95,7 @@ export default function AnalyticsPage() {
       <div className="space-y-8">
         <div>
           <h2 className="text-3xl font-bold text-white mb-2">Analytics</h2>
-          <p className="text-slate-400">Track company balances and earnings over time</p>
+          <p className="text-slate-400">Track company balances and earnings over time (sent invoices)</p>
         </div>
 
         <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm p-6">
