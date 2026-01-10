@@ -11,6 +11,7 @@ class Employee(Base):
     email = Column(String, nullable=True)
     start_date = Column(String, nullable=True)
     company = Column(String, nullable=True)
+    preferred_vendor = Column(String, nullable=True)
 
     lifetime_hours = Column(Float, default=0.0)
     # hours tracked per month are in EmployeeMonth

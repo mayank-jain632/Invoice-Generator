@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from .settings import settings
 
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
 
 SECRET_KEY = settings.SECRET_KEY if hasattr(settings, 'SECRET_KEY') else "your-secret-key-change-in-production"
 ALGORITHM = "HS256"
@@ -21,6 +22,28 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials"
+            )
+        return username
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials"
+        )
+
+def verify_token_optional(token: str | None = None, credentials: HTTPAuthorizationCredentials | None = Depends(optional_security)):
+    provided = token or (credentials.credentials if credentials else None)
+    if not provided:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials"
+        )
+    try:
+        payload = jwt.decode(provided, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             raise HTTPException(

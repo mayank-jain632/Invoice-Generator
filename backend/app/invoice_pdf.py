@@ -12,13 +12,16 @@ def generate_invoice_pdf(
     employee_company: str | None,
     employee_start_date: str | None,
     employee_email: str | None,
+    employee_preferred_vendor: str | None,
     month_key: str,
     hours: float,
     rate: float,
     amount: float,
 ) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = out_dir / f"{invoice_number}.pdf"
+    safe_name = "".join(c for c in employee_name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
+    safe_month = month_key.replace("-", "_")
+    pdf_path = out_dir / f"{safe_name}_{safe_month}.pdf"
 
     c = canvas.Canvas(str(pdf_path), pagesize=LETTER)
     w, h = LETTER
@@ -34,11 +37,12 @@ def generate_invoice_pdf(
     c.rect(left - 10, bottom_bar_y, w - 2 * (left - 10), bar_height, stroke=0, fill=1)
     c.setFillColor(colors.black)
 
-    date_str = datetime.utcnow().strftime("%d-%b-%y").lstrip("0")
+    month_date = datetime.strptime(f"{month_key}-01", "%Y-%m-%d")
+    date_str = month_date.strftime("%d-%b-%y").lstrip("0")
     currency_label = "$" if settings.DEFAULT_CURRENCY.upper() == "USD" else settings.DEFAULT_CURRENCY
 
     c.setFont("Helvetica-Bold", 11)
-    c.drawString(left, top_bar_y + 14, settings.COMPANY_NAME)
+    c.drawString(left, top_bar_y + 14, employee_preferred_vendor or settings.COMPANY_NAME)
     c.setFont("Helvetica", 9)
     c.drawString(right - 200, top_bar_y + 20, "Invoice Number")
     c.drawString(right - 200, top_bar_y + 8, "Invoice Date")
@@ -54,12 +58,6 @@ def generate_invoice_pdf(
     c.drawString(left, y, f"Name: {employee_name}")
     y -= 12
     c.drawString(left, y, f"Company: {employee_company or 'N/A'}")
-    y -= 12
-    c.drawString(left, y, f"Start Date: {employee_start_date or 'N/A'}")
-    y -= 12
-    c.drawString(left, y, f"Email: {employee_email or 'N/A'}")
-    y -= 12
-    c.drawString(left, y, f"Month: {month_key}")
 
     y -= 26
     c.setFont("Helvetica-Bold", 9)
@@ -73,7 +71,7 @@ def generate_invoice_pdf(
     y -= 16
 
     c.setFont("Helvetica", 9)
-    c.drawString(left, y, "Work performed")
+    c.drawString(left, y, f"{employee_name} — {month_key}")
     c.drawRightString(right - 160, y, f"{hours:.2f}")
     c.drawRightString(right - 80, y, f"{currency_label}{rate:,.2f}")
     c.drawRightString(right, y, f"{currency_label}{amount:,.2f}")

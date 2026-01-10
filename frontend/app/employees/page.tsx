@@ -11,6 +11,7 @@ type Employee = {
   email?: string | null;
   start_date?: string | null;
   company?: string | null;
+  preferred_vendor?: string | null;
   lifetime_hours: number;
 };
 
@@ -21,6 +22,7 @@ export default function EmployeesPage() {
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
   const [startDate, setStartDate] = useState("");
+  const [preferredVendor, setPreferredVendor] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -29,6 +31,7 @@ export default function EmployeesPage() {
   const [editEmail, setEditEmail] = useState("");
   const [editCompany, setEditCompany] = useState("");
   const [editStartDate, setEditStartDate] = useState("");
+  const [editPreferredVendor, setEditPreferredVendor] = useState("");
   const [monthKey, setMonthKey] = useState("2025-12");
   const [monthlyHours, setMonthlyHours] = useState<Record<number, number>>({});
 
@@ -61,8 +64,8 @@ export default function EmployeesPage() {
 
   async function addEmployee() {
     setErr(null);
-    if (!name || !rate || !company || !startDate) {
-      setErr("Name, hourly rate, company, and start date are required");
+    if (!name || !rate || !company || !startDate || !preferredVendor) {
+      setErr("Name, hourly rate, company, start date, and preferred vendor are required");
       return;
     }
     try {
@@ -72,8 +75,9 @@ export default function EmployeesPage() {
         email: email || null,
         company,
         start_date: startDate,
+        preferred_vendor: preferredVendor,
       });
-      setName(""); setRate(""); setEmail(""); setCompany(""); setStartDate("");
+      setName(""); setRate(""); setEmail(""); setCompany(""); setStartDate(""); setPreferredVendor("");
       await refresh();
     } catch (e: any) {
       setErr(e.message);
@@ -98,12 +102,13 @@ export default function EmployeesPage() {
     setEditEmail(emp.email || "");
     setEditCompany(emp.company || "");
     setEditStartDate(emp.start_date || "");
+    setEditPreferredVendor(emp.preferred_vendor || "");
   }
 
   async function saveEdit(id: number) {
     setErr(null);
-    if (!editName || !editRate || !editCompany || !editStartDate) {
-      setErr("Name, hourly rate, company, and start date are required");
+    if (!editName || !editRate || !editCompany || !editStartDate || !editPreferredVendor) {
+      setErr("Name, hourly rate, company, start date, and preferred vendor are required");
       return;
     }
     try {
@@ -117,6 +122,7 @@ export default function EmployeesPage() {
           email: editEmail || null,
           company: editCompany,
           start_date: editStartDate,
+          preferred_vendor: editPreferredVendor,
         }),
       });
       setEditingId(null);
@@ -154,7 +160,7 @@ export default function EmployeesPage() {
         <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm p-8">
           <h3 className="text-lg font-semibold text-white mb-6">Add New Employee</h3>
           <div className="space-y-4">
-            <div className="grid md:grid-cols-6 gap-4">
+            <div className="grid md:grid-cols-7 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-2">Full Name</label>
                 <input
@@ -181,6 +187,15 @@ export default function EmployeesPage() {
                   placeholder="Acme Corp"
                   value={company}
                   onChange={e => setCompany(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-2">Preferred Vendor</label>
+                <input
+                  className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
+                  placeholder="Your Vendor Name"
+                  value={preferredVendor}
+                  onChange={e => setPreferredVendor(e.target.value)}
                 />
               </div>
               <div>
@@ -227,6 +242,7 @@ export default function EmployeesPage() {
                   <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Name</th>
                   <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Hourly Rate</th>
                   <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Company</th>
+                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Preferred Vendor</th>
                   <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Start Date</th>
                   <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Month Hours</th>
                   <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Lifetime Hours</th>
@@ -236,9 +252,9 @@ export default function EmployeesPage() {
               </thead>
               <tbody className="divide-y divide-slate-700/30">
                 {loading ? (
-                  <tr><td colSpan={8} className="px-8 py-6 text-center text-slate-400">Loading...</td></tr>
+                  <tr><td colSpan={9} className="px-8 py-6 text-center text-slate-400">Loading...</td></tr>
                 ) : employees.length === 0 ? (
-                  <tr><td colSpan={8} className="px-8 py-6 text-center text-slate-400">No employees yet. Add one above.</td></tr>
+                  <tr><td colSpan={9} className="px-8 py-6 text-center text-slate-400">No employees yet. Add one above.</td></tr>
                 ) : (
                   employees.map(e => (
                     <tr key={e.id} className="hover:bg-slate-800/30 transition-colors">
@@ -279,6 +295,17 @@ export default function EmployeesPage() {
                           />
                         ) : (
                           e.company || "—"
+                        )}
+                      </td>
+                      <td className="px-8 py-4 text-sm text-slate-300">
+                        {editingId === e.id ? (
+                          <input
+                            className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none w-40"
+                            value={editPreferredVendor}
+                            onChange={ev => setEditPreferredVendor(ev.target.value)}
+                          />
+                        ) : (
+                          e.preferred_vendor || "—"
                         )}
                       </td>
                       <td className="px-8 py-4 text-sm text-slate-300">

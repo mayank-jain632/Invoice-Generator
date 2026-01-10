@@ -13,7 +13,7 @@ from . import models, schemas
 from .invoice_pdf import generate_invoice_pdf
 from .emailer import send_timesheet_reminder, send_email
 from .settings import settings
-from .auth import verify_token, create_access_token, verify_credentials
+from .auth import verify_token, verify_token_optional, create_access_token, verify_credentials
 from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 
@@ -94,6 +94,7 @@ def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_d
         email=payload.email,
         start_date=payload.start_date,
         company=payload.company,
+        preferred_vendor=payload.preferred_vendor,
     )
     db.add(emp)
     db.commit()
@@ -121,6 +122,7 @@ def update_employee(employee_id: int, payload: schemas.EmployeeCreate, db: Sessi
     emp.email = payload.email
     emp.start_date = payload.start_date
     emp.company = payload.company
+    emp.preferred_vendor = payload.preferred_vendor
     db.commit()
     db.refresh(emp)
     return emp
@@ -209,6 +211,7 @@ def generate_invoices(payload: schemas.InvoiceCreateIn, db: Session = Depends(ge
                     employee_company=emp.company,
                     employee_start_date=emp.start_date,
                     employee_email=emp.email,
+                    employee_preferred_vendor=emp.preferred_vendor,
                     month_key=payload.month_key,
                     hours=float(existing.hours),
                     rate=float(existing.rate),
@@ -240,6 +243,7 @@ def generate_invoices(payload: schemas.InvoiceCreateIn, db: Session = Depends(ge
             employee_company=emp.company,
             employee_start_date=emp.start_date,
             employee_email=emp.email,
+            employee_preferred_vendor=emp.preferred_vendor,
             month_key=payload.month_key,
             hours=hours,
             rate=rate,
@@ -281,7 +285,11 @@ def list_invoices(db: Session = Depends(get_db), username: str = Depends(verify_
     return db.query(models.Invoice).order_by(models.Invoice.created_at.desc()).all()
 
 @app.get("/invoices/{invoice_id}/pdf")
-def get_invoice_pdf(invoice_id: int, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+def get_invoice_pdf(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    username: str = Depends(verify_token_optional),
+):
     inv = db.query(models.Invoice).filter(models.Invoice.id == invoice_id).first()
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -307,6 +315,7 @@ def regenerate_pdfs(db: Session = Depends(get_db), username: str = Depends(verif
                 employee_company=inv.employee.company if inv.employee else None,
                 employee_start_date=inv.employee.start_date if inv.employee else None,
                 employee_email=inv.employee.email if inv.employee else None,
+                employee_preferred_vendor=inv.employee.preferred_vendor if inv.employee else None,
                 month_key=inv.month_key,
                 hours=float(inv.hours),
                 rate=float(inv.rate),

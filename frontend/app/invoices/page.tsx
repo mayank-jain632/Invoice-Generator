@@ -20,6 +20,7 @@ export default function InvoicesPage() {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : "";
 
   async function refresh() {
     setErr(null);
@@ -271,6 +272,7 @@ export default function InvoicesPage() {
                   invoices.map(inv => {
                     const emp = employees.find(e => e.id === inv.employee_id);
                     const status = getStatusBadge(inv.sent, inv.approved);
+                    const pdfUrl = `${process.env.NEXT_PUBLIC_API_URL || "/api"}/invoices/${inv.id}/pdf${token ? `?token=${encodeURIComponent(token)}` : ""}`;
                     return (
                       <tr key={inv.id} className="hover:bg-slate-800/30 transition-colors">
                         <td className="px-8 py-4">
@@ -293,7 +295,7 @@ export default function InvoicesPage() {
                         </td>
                         <td className="px-8 py-4 text-sm text-right flex items-center gap-2 justify-end">
                           <a
-                            href={`${process.env.NEXT_PUBLIC_API_URL || "/api"}/invoices/${inv.id}/pdf`}
+                            href={pdfUrl}
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs rounded-lg border border-slate-600 px-3 py-1.5 hover:bg-slate-800/60 text-slate-200 transition-colors"

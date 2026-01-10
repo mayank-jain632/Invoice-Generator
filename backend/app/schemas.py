@@ -7,6 +7,7 @@ class EmployeeCreate(BaseModel):
     email: Optional[str] = None
     start_date: Optional[str] = None
     company: Optional[str] = None
+    preferred_vendor: Optional[str] = None
 
 class EmployeeOut(BaseModel):
     id: int
@@ -15,6 +16,7 @@ class EmployeeOut(BaseModel):
     email: Optional[str]
     start_date: Optional[str]
     company: Optional[str]
+    preferred_vendor: Optional[str]
     lifetime_hours: float
 
     class Config:
