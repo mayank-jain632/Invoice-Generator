@@ -1,1 +1,1 @@
-smtplib and imaplib
+Invoice automation dashboard
