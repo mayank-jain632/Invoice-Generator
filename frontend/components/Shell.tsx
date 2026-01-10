@@ -25,6 +25,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <a href="/employees" className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors">Employees</a>
                 <a href="/timesheets" className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors">Timesheets</a>
                 <a href="/invoices" className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors">Invoices</a>
+                <a href="/analytics" className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors">Analytics</a>
               </div>
             </div>
             <button

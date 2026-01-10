@@ -60,6 +60,21 @@ class InvoiceOut(BaseModel):
     class Config:
         from_attributes = True
 
+class CompanyTotalsOut(BaseModel):
+    company: str
+    month_key: str
+    total_amount: float
+    paid: bool
+
+class CompanyTotalsIn(BaseModel):
+    company: str
+    month_key: str
+    paid: bool
+
+class EarningsPoint(BaseModel):
+    month_key: str
+    total_amount: float
+
 class ApproveIn(BaseModel):
     invoice_ids: List[int]
 

@@ -15,6 +15,7 @@ from .emailer import send_timesheet_reminder, send_email
 from .settings import settings
 from .auth import verify_token, verify_token_optional, create_access_token, verify_credentials
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
 from pydantic import BaseModel
 
 # Configure logging
@@ -435,3 +436,56 @@ def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
 
     db.commit()
     return {"sent_count": len(pending)}
+
+# --- Analytics ---
+@app.get("/analytics/company_totals", response_model=list[schemas.CompanyTotalsOut])
+def company_totals(month_key: str, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    company_expr = func.coalesce(models.Employee.company, "Unassigned")
+    rows = (
+        db.query(company_expr.label("company"), func.sum(models.Invoice.amount).label("total_amount"))
+        .join(models.Invoice, models.Invoice.employee_id == models.Employee.id)
+        .filter(models.Invoice.month_key == month_key)
+        .group_by(company_expr)
+        .order_by(company_expr.asc())
+        .all()
+    )
+
+    totals = []
+    for company, total in rows:
+        payment = (
+            db.query(models.CompanyPayment)
+            .filter(models.CompanyPayment.company == company, models.CompanyPayment.month_key == month_key)
+            .first()
+        )
+        totals.append({
+            "company": company,
+            "month_key": month_key,
+            "total_amount": float(total or 0),
+            "paid": bool(payment.paid) if payment else False,
+        })
+    return totals
+
+@app.post("/analytics/company_totals/mark_paid")
+def mark_company_paid(payload: schemas.CompanyTotalsIn, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    record = (
+        db.query(models.CompanyPayment)
+        .filter(models.CompanyPayment.company == payload.company, models.CompanyPayment.month_key == payload.month_key)
+        .first()
+    )
+    if not record:
+        record = models.CompanyPayment(company=payload.company, month_key=payload.month_key, paid=False)
+        db.add(record)
+    record.paid = payload.paid
+    record.paid_at = datetime.utcnow() if payload.paid else None
+    db.commit()
+    return {"company": payload.company, "month_key": payload.month_key, "paid": record.paid}
+
+@app.get("/analytics/earnings", response_model=list[schemas.EarningsPoint])
+def earnings(db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    rows = (
+        db.query(models.Invoice.month_key, func.sum(models.Invoice.amount).label("total_amount"))
+        .group_by(models.Invoice.month_key)
+        .order_by(models.Invoice.month_key.asc())
+        .all()
+    )
+    return [{"month_key": month_key, "total_amount": float(total or 0)} for month_key, total in rows]

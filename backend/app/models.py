@@ -12,6 +12,17 @@ class Vendor(Base):
 
     employees = relationship("Employee", back_populates="preferred_vendor")
 
+class CompanyPayment(Base):
+    __tablename__ = "company_payments"
+    id = Column(Integer, primary_key=True, index=True)
+    company = Column(String, nullable=False)
+    month_key = Column(String, nullable=False)
+    paid = Column(Boolean, default=False)
+    paid_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("company", "month_key", name="uq_company_month_payment"),)
+
 class Employee(Base):
     __tablename__ = "employees"
     id = Column(Integer, primary_key=True, index=True)
