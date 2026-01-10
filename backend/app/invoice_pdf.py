@@ -40,9 +40,16 @@ def generate_invoice_pdf(
     month_date = datetime.strptime(f"{month_key}-01", "%Y-%m-%d")
     date_str = month_date.strftime("%d-%b-%y").lstrip("0")
     currency_label = "$" if settings.DEFAULT_CURRENCY.upper() == "USD" else settings.DEFAULT_CURRENCY
+    company_addresses = {
+        "Swift Bot Technologies": "123 Swift Bot Ave, Metropolis, NY 10001",
+        "ORM": "456 ORM Way, Gotham, CA 94105",
+    }
+    company_address = company_addresses.get(employee_company or "", "Address on file")
 
     c.setFont("Helvetica-Bold", 11)
     c.drawString(left, top_bar_y + 14, employee_company or settings.COMPANY_NAME)
+    c.setFont("Helvetica", 8)
+    c.drawString(left, top_bar_y + 2, company_address)
     c.setFont("Helvetica", 9)
     c.drawString(right - 200, top_bar_y + 20, "Invoice Number")
     c.drawString(right - 200, top_bar_y + 8, "Invoice Date")

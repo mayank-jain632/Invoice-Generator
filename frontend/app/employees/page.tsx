@@ -210,10 +210,15 @@ export default function EmployeesPage() {
                 <label className="block text-xs font-medium text-slate-300 mb-2">Company</label>
                 <input
                   className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                  placeholder="Acme Corp"
+                  placeholder="Swift Bot Technologies"
                   value={company}
                   onChange={e => setCompany(e.target.value)}
+                  list="company-options-add"
                 />
+                <datalist id="company-options-add">
+                  <option value="Swift Bot Technologies" />
+                  <option value="ORM" />
+                </datalist>
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-2">Preferred Vendor</label>
@@ -360,11 +365,18 @@ export default function EmployeesPage() {
                       </td>
                       <td className="px-8 py-4 text-sm text-slate-300">
                         {editingId === e.id ? (
-                          <input
-                            className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none w-40"
-                            value={editCompany}
-                            onChange={ev => setEditCompany(ev.target.value)}
-                          />
+                          <>
+                            <input
+                              className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none w-40"
+                              value={editCompany}
+                              onChange={ev => setEditCompany(ev.target.value)}
+                              list="company-options"
+                            />
+                            <datalist id="company-options">
+                              <option value="Swift Bot Technologies" />
+                              <option value="ORM" />
+                            </datalist>
+                          </>
                         ) : (
                           e.company || "—"
                         )}
