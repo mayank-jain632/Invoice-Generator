@@ -99,6 +99,17 @@ def create_vendor(payload: schemas.VendorCreate, db: Session = Depends(get_db), 
 def list_vendors(db: Session = Depends(get_db), username: str = Depends(verify_token)):
     return db.query(models.Vendor).order_by(models.Vendor.name.asc()).all()
 
+@app.put("/vendors/{vendor_id}", response_model=schemas.VendorOut)
+def update_vendor(vendor_id: int, payload: schemas.VendorCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    vendor = db.query(models.Vendor).filter(models.Vendor.id == vendor_id).first()
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    vendor.name = payload.name
+    vendor.email = payload.email
+    db.commit()
+    db.refresh(vendor)
+    return vendor
+
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     existing = db.query(models.Employee).filter(models.Employee.name == payload.name).first()
@@ -414,7 +425,7 @@ def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
         if not inv:
             continue
         if inv.sent:
-            continue
+            pass
 
         pdf = Path(inv.pdf_path) if inv.pdf_path else None
         if not pdf or not pdf.exists():

@@ -26,6 +26,9 @@ export default function EmployeesPage() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [vendorName, setVendorName] = useState("");
   const [vendorEmail, setVendorEmail] = useState("");
+  const [editingVendorId, setEditingVendorId] = useState<number | null>(null);
+  const [editVendorName, setEditVendorName] = useState("");
+  const [editVendorEmail, setEditVendorEmail] = useState("");
   const [name, setName] = useState("");
   const [rate, setRate] = useState("");
   const [email, setEmail] = useState("");
@@ -160,6 +163,36 @@ export default function EmployeesPage() {
     } catch (e: any) {
       setErr(e.message);
     }
+  }
+
+  function startVendorEdit(vendor: Vendor) {
+    setEditingVendorId(vendor.id);
+    setEditVendorName(vendor.name);
+    setEditVendorEmail(vendor.email);
+  }
+
+  async function saveVendorEdit(id: number) {
+    setErr(null);
+    if (!editVendorName || !editVendorEmail) {
+      setErr("Vendor name and email are required");
+      return;
+    }
+    try {
+      const API = process.env.NEXT_PUBLIC_API_URL || "/api";
+      await fetch(`${API}/vendors/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editVendorName, email: editVendorEmail }),
+      });
+      setEditingVendorId(null);
+      await refresh();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
+  function cancelVendorEdit() {
+    setEditingVendorId(null);
   }
 
   return (
@@ -300,8 +333,50 @@ export default function EmployeesPage() {
           <div className="mt-6 space-y-2 text-sm text-slate-300">
             {vendors.length === 0 ? "No vendors yet." : vendors.map(v => (
               <div key={v.id} className="flex items-center justify-between border border-slate-700/40 rounded-lg px-4 py-2">
-                <span>{v.name}</span>
-                <span className="text-slate-400">{v.email}</span>
+                {editingVendorId === v.id ? (
+                  <div className="flex flex-1 flex-wrap items-center gap-3">
+                    <input
+                      className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none"
+                      value={editVendorName}
+                      onChange={e => setEditVendorName(e.target.value)}
+                    />
+                    <input
+                      className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none w-56"
+                      value={editVendorEmail}
+                      onChange={e => setEditVendorEmail(e.target.value)}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <span>{v.name}</span>
+                    <span className="text-slate-400">{v.email}</span>
+                  </>
+                )}
+                <div className="flex items-center gap-2">
+                  {editingVendorId === v.id ? (
+                    <>
+                      <button
+                        onClick={() => saveVendorEdit(v.id)}
+                        className="text-xs rounded-lg border border-green-500/40 text-green-300 px-3 py-1.5 hover:bg-green-500/10 transition-colors"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={cancelVendorEdit}
+                        className="text-xs rounded-lg border border-slate-500/40 text-slate-300 px-3 py-1.5 hover:bg-slate-500/10 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => startVendorEdit(v)}
+                      className="text-xs rounded-lg border border-blue-500/40 text-blue-300 px-3 py-1.5 hover:bg-blue-500/10 transition-colors"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
