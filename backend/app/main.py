@@ -433,7 +433,24 @@ def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
 
         pdf = Path(inv.pdf_path) if inv.pdf_path else None
         if not pdf or not pdf.exists():
-            raise HTTPException(status_code=500, detail=f"Missing PDF for invoice {inv.invoice_number}")
+            emp = db.query(models.Employee).filter(models.Employee.id == inv.employee_id).first()
+            if not emp:
+                raise HTTPException(status_code=404, detail=f"Employee not found for invoice {inv.invoice_number}")
+            pdf_path = generate_invoice_pdf(
+                out_dir=INVOICE_DIR,
+                invoice_number=inv.invoice_number,
+                employee_name=emp.name,
+                employee_company=emp.company,
+                employee_start_date=emp.start_date,
+                employee_email=emp.email,
+                employee_preferred_vendor=emp.preferred_vendor.name if emp.preferred_vendor else None,
+                month_key=inv.month_key,
+                hours=float(inv.hours),
+                rate=float(inv.rate),
+                amount=float(inv.amount),
+            )
+            inv.pdf_path = str(pdf_path)
+            pdf = Path(inv.pdf_path)
 
         emp = db.query(models.Employee).filter(models.Employee.id == inv.employee_id).first()
         vendor = emp.preferred_vendor if emp else None
