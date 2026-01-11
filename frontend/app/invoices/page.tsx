@@ -96,6 +96,38 @@ export default function InvoicesPage() {
     }
   }
 
+  async function sendVendor(vendorName: string, vendorInvoices: Invoice[]) {
+    setErr(null); setOk(null);
+    const ids = vendorInvoices.map(inv => inv.id);
+    if (ids.length === 0) {
+      setErr("No invoices found for this vendor");
+      return;
+    }
+    try {
+      const resp = await apiPost("/invoices/send", { invoice_ids: ids });
+      setOk(resp);
+      await refresh();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
+  async function sendVendorSelected(vendorInvoices: Invoice[]) {
+    setErr(null); setOk(null);
+    const ids = vendorInvoices.filter(inv => selectedInv[inv.id]).map(inv => inv.id);
+    if (ids.length === 0) {
+      setErr("Select at least one invoice for this vendor");
+      return;
+    }
+    try {
+      const resp = await apiPost("/invoices/send", { invoice_ids: ids });
+      setOk(resp);
+      await refresh();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
   const getStatusBadge = (sent: boolean) => {
     if (sent) return { text: "Sent", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
     return { text: "Draft", color: "bg-slate-500/20 text-slate-300 border-slate-500/30" };
@@ -218,15 +250,51 @@ export default function InvoicesPage() {
                 }, {})
               ).map(([vendorName, vendorInvoices]) => (
                 <div key={vendorName} className="border border-slate-700/40 rounded-xl overflow-hidden">
-                  <div className="px-6 py-3 bg-slate-800/40 text-sm font-semibold text-slate-200">
-                    {vendorName}
+                  <div className="px-6 py-3 bg-slate-800/40 text-sm font-semibold text-slate-200 flex items-center justify-between">
+                    <span>{vendorName}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          const next = { ...selectedInv };
+                          vendorInvoices.forEach(inv => { next[inv.id] = true; });
+                          setSelectedInv(next);
+                        }}
+                        className="text-xs rounded-lg border border-slate-600 px-3 py-1.5 hover:bg-slate-800/60 text-slate-200 transition-colors"
+                      >
+                        Select Vendor
+                      </button>
+                      <button
+                        onClick={() => sendVendorSelected(vendorInvoices)}
+                        className="text-xs rounded-lg border border-emerald-500/40 text-emerald-300 px-3 py-1.5 hover:bg-emerald-500/10 transition-colors"
+                      >
+                        Send Selected
+                      </button>
+                      <button
+                        onClick={() => sendVendor(vendorName, vendorInvoices)}
+                        className="text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 transition-colors"
+                      >
+                        Send Vendor
+                      </button>
+                    </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-slate-800/50 border-b border-slate-700/50">
                         <tr>
                           <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300 w-12">
-                            <input type="checkbox" className="rounded" />
+                            <input
+                              type="checkbox"
+                              className="rounded"
+                              checked={invoices.length > 0 && invoices.every(inv => selectedInv[inv.id])}
+                              onChange={ev => {
+                                const checked = ev.target.checked;
+                                if (checked) {
+                                  selectAllInvoices();
+                                } else {
+                                  deselectAllInvoices();
+                                }
+                              }}
+                            />
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300">Invoice #</th>
                           <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300">Employee</th>
