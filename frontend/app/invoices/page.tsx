@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Shell from "@/components/Shell";
 import { apiGet, apiPost } from "@/app/api";
 
-type Employee = { id: number; name: string; hourly_rate: number; lifetime_hours: number; email?: string | null };
+type Employee = { id: number; name: string; hourly_rate: number; lifetime_hours: number; email?: string | null; preferred_vendor_id?: number | null };
+type Vendor = { id: number; name: string; email: string };
 type Invoice = {
   id: number; employee_id: number; month_key: string; hours: number; rate: number;
   amount: number; invoice_number: string; approved: boolean; sent: boolean;
@@ -12,11 +13,11 @@ type Invoice = {
 
 export default function InvoicesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [monthKey, setMonthKey] = useState("2025-12");
   const [selectedEmp, setSelectedEmp] = useState<Record<number, boolean>>({});
   const [selectedInv, setSelectedInv] = useState<Record<number, boolean>>({});
-  const [sendTo, setSendTo] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -30,8 +31,10 @@ export default function InvoicesPage() {
         apiGet<Employee[]>("/employees"),
         apiGet<Invoice[]>("/invoices"),
       ]);
+      const vends = await apiGet<Vendor[]>("/vendors");
       setEmployees(emps);
       setInvoices(invs);
+      setVendors(vends);
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -84,16 +87,8 @@ export default function InvoicesPage() {
       setErr("Select at least one invoice");
       return;
     }
-    const recipients = sendTo
-      .split(/[,\n;]/)
-      .map(e => e.trim())
-      .filter(Boolean);
-    if (recipients.length === 0) {
-      setErr("Enter at least one recipient email");
-      return;
-    }
     try {
-      const resp = await apiPost("/invoices/send", { invoice_ids: ids, to_emails: recipients });
+      const resp = await apiPost("/invoices/send", { invoice_ids: ids });
       setOk(resp);
       await refresh();
     } catch (e: any) {
@@ -180,12 +175,6 @@ export default function InvoicesPage() {
           <div className="px-8 py-6 border-b border-slate-700/50">
             <h3 className="text-lg font-semibold text-white mb-4">All Invoices</h3>
             <div className="flex gap-2 flex-wrap">
-              <input
-                className="flex-1 min-w-[220px] rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/20 transition-all"
-                placeholder="Send to: billing@company.com, finance@company.com"
-                value={sendTo}
-                onChange={e => setSendTo(e.target.value)}
-              />
               <button
                 onClick={selectAllInvoices}
                 className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"
@@ -213,68 +202,85 @@ export default function InvoicesPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-800/50 border-b border-slate-700/50">
-                <tr>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300 w-12">
-                    <input type="checkbox" className="rounded" />
-                  </th>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Invoice #</th>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Employee</th>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Month</th>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Hours</th>
-                  <th className="px-8 py-3 text-right text-xs font-semibold text-slate-300">Amount</th>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Status</th>
-                  <th className="px-8 py-3 text-right text-xs font-semibold text-slate-300">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700/30">
-                {loading ? (
-                  <tr><td colSpan={7} className="px-8 py-8 text-center text-slate-400">Loading...</td></tr>
-                ) : invoices.length === 0 ? (
-                  <tr><td colSpan={8} className="px-8 py-8 text-center text-slate-400">No invoices yet. Generate one above.</td></tr>
-                ) : (
-                  invoices.map(inv => {
-                    const emp = employees.find(e => e.id === inv.employee_id);
-                    const status = getStatusBadge(inv.sent);
-                    const pdfUrl = `${process.env.NEXT_PUBLIC_API_URL || "/api"}/invoices/${inv.id}/pdf${token ? `?token=${encodeURIComponent(token)}` : ""}`;
-                    return (
-                      <tr key={inv.id} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="px-8 py-4">
-                          <input
-                            type="checkbox"
-                            checked={!!selectedInv[inv.id]}
-                            onChange={ev => setSelectedInv({ ...selectedInv, [inv.id]: ev.target.checked })}
-                            className="rounded"
-                          />
-                        </td>
-                        <td className="px-8 py-4 text-sm font-mono text-blue-400">{inv.invoice_number}</td>
-                        <td className="px-8 py-4 text-sm font-medium text-white">{emp?.name || "Unknown"}</td>
-                        <td className="px-8 py-4 text-sm text-slate-300">{inv.month_key}</td>
-                        <td className="px-8 py-4 text-sm text-slate-300">{inv.hours.toFixed(2)}h</td>
-                        <td className="px-8 py-4 text-sm font-semibold text-white text-right">${inv.amount.toFixed(2)}</td>
-                        <td className="px-8 py-4 text-sm">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-xs font-medium ${status.color}`}>
-                            {status.text}
-                          </span>
-                        </td>
-                        <td className="px-8 py-4 text-sm text-right flex items-center gap-2 justify-end">
-                          <a
-                            href={pdfUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs rounded-lg border border-slate-600 px-3 py-1.5 hover:bg-slate-800/60 text-slate-200 transition-colors"
-                          >
-                            Preview
-                          </a>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+          <div className="space-y-6">
+            {loading ? (
+              <div className="px-8 py-8 text-center text-slate-400">Loading...</div>
+            ) : invoices.length === 0 ? (
+              <div className="px-8 py-8 text-center text-slate-400">No invoices yet. Generate one above.</div>
+            ) : (
+              Object.entries(
+                invoices.reduce<Record<string, Invoice[]>>((acc, inv) => {
+                  const emp = employees.find(e => e.id === inv.employee_id);
+                  const vendorName = vendors.find(v => v.id === emp?.preferred_vendor_id)?.name || "Unassigned Vendor";
+                  acc[vendorName] = acc[vendorName] || [];
+                  acc[vendorName].push(inv);
+                  return acc;
+                }, {})
+              ).map(([vendorName, vendorInvoices]) => (
+                <div key={vendorName} className="border border-slate-700/40 rounded-xl overflow-hidden">
+                  <div className="px-6 py-3 bg-slate-800/40 text-sm font-semibold text-slate-200">
+                    {vendorName}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-800/50 border-b border-slate-700/50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300 w-12">
+                            <input type="checkbox" className="rounded" />
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300">Invoice #</th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300">Employee</th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300">Month</th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300">Hours</th>
+                          <th className="px-6 py-3 text-right text-xs font-semibold text-slate-300">Amount</th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300">Status</th>
+                          <th className="px-6 py-3 text-right text-xs font-semibold text-slate-300">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-700/30">
+                        {vendorInvoices.map(inv => {
+                          const emp = employees.find(e => e.id === inv.employee_id);
+                          const status = getStatusBadge(inv.sent);
+                          const pdfUrl = `${process.env.NEXT_PUBLIC_API_URL || "/api"}/invoices/${inv.id}/pdf${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+                          return (
+                            <tr key={inv.id} className="hover:bg-slate-800/30 transition-colors">
+                              <td className="px-6 py-4">
+                                <input
+                                  type="checkbox"
+                                  checked={!!selectedInv[inv.id]}
+                                  onChange={ev => setSelectedInv({ ...selectedInv, [inv.id]: ev.target.checked })}
+                                  className="rounded"
+                                />
+                              </td>
+                              <td className="px-6 py-4 text-sm font-mono text-blue-400">{inv.invoice_number}</td>
+                              <td className="px-6 py-4 text-sm font-medium text-white">{emp?.name || "Unknown"}</td>
+                              <td className="px-6 py-4 text-sm text-slate-300">{inv.month_key}</td>
+                              <td className="px-6 py-4 text-sm text-slate-300">{inv.hours.toFixed(2)}h</td>
+                              <td className="px-6 py-4 text-sm font-semibold text-white text-right">${inv.amount.toFixed(2)}</td>
+                              <td className="px-6 py-4 text-sm">
+                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-xs font-medium ${status.color}`}>
+                                  {status.text}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-sm text-right flex items-center gap-2 justify-end">
+                                <a
+                                  href={pdfUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs rounded-lg border border-slate-600 px-3 py-1.5 hover:bg-slate-800/60 text-slate-200 transition-colors"
+                                >
+                                  Preview
+                                </a>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

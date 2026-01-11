@@ -165,6 +165,17 @@ export default function EmployeesPage() {
     }
   }
 
+  async function deleteVendor(id: number) {
+    setErr(null);
+    try {
+      const API = process.env.NEXT_PUBLIC_API_URL || "/api";
+      await fetch(`${API}/vendors/${id}`, { method: "DELETE" });
+      await refresh();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
   function startVendorEdit(vendor: Vendor) {
     setEditingVendorId(vendor.id);
     setEditVendorName(vendor.name);
@@ -315,7 +326,7 @@ export default function EmployeesPage() {
               <label className="block text-xs font-medium text-slate-300 mb-2">Vendor Email</label>
               <input
                 className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                placeholder="billing@vendor.com"
+                placeholder="billing@vendor.com, finance@vendor.com"
                 value={vendorEmail}
                 onChange={e => setVendorEmail(e.target.value)}
                 type="email"
@@ -369,12 +380,20 @@ export default function EmployeesPage() {
                       </button>
                     </>
                   ) : (
-                    <button
-                      onClick={() => startVendorEdit(v)}
-                      className="text-xs rounded-lg border border-blue-500/40 text-blue-300 px-3 py-1.5 hover:bg-blue-500/10 transition-colors"
-                    >
-                      Edit
-                    </button>
+                    <>
+                      <button
+                        onClick={() => startVendorEdit(v)}
+                        className="text-xs rounded-lg border border-blue-500/40 text-blue-300 px-3 py-1.5 hover:bg-blue-500/10 transition-colors"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => deleteVendor(v.id)}
+                        className="text-xs rounded-lg border border-red-500/40 text-red-300 px-3 py-1.5 hover:bg-red-500/10 transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

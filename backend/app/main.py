@@ -110,6 +110,15 @@ def update_vendor(vendor_id: int, payload: schemas.VendorCreate, db: Session = D
     db.refresh(vendor)
     return vendor
 
+@app.delete("/vendors/{vendor_id}")
+def delete_vendor(vendor_id: int, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    vendor = db.query(models.Vendor).filter(models.Vendor.id == vendor_id).first()
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    db.delete(vendor)
+    db.commit()
+    return {"deleted": vendor_id}
+
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     existing = db.query(models.Employee).filter(models.Employee.name == payload.name).first()
@@ -414,12 +423,7 @@ def approve_invoices(payload: schemas.ApproveIn, db: Session = Depends(get_db), 
 
 @app.post("/invoices/send")
 def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
-    recipients = [e.strip() for e in payload.to_emails if e and e.strip()]
-    if not recipients:
-        raise HTTPException(status_code=400, detail="At least one recipient email is required")
-
-    pending: list[tuple[models.Invoice, Path]] = []
-    month_keys: set[str] = set()
+    pending_by_vendor: dict[int, dict[str, object]] = {}
     for inv_id in payload.invoice_ids:
         inv = db.query(models.Invoice).filter(models.Invoice.id == inv_id).first()
         if not inv:
@@ -431,22 +435,35 @@ def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
         if not pdf or not pdf.exists():
             raise HTTPException(status_code=500, detail=f"Missing PDF for invoice {inv.invoice_number}")
 
-        pending.append((inv, pdf))
-        month_keys.add(inv.month_key)
+        emp = db.query(models.Employee).filter(models.Employee.id == inv.employee_id).first()
+        vendor = emp.preferred_vendor if emp else None
+        if not vendor or not vendor.email:
+            raise HTTPException(status_code=400, detail=f"No vendor emails for invoice {inv.invoice_number}")
 
-    if not pending:
-        return {"sent_count": 0}
+        vendor_emails = [e.strip() for e in vendor.email.split(",") if e.strip()]
+        if not vendor_emails:
+            raise HTTPException(status_code=400, detail=f"No vendor emails for invoice {inv.invoice_number}")
 
-    month_list = ", ".join(sorted(month_keys))
-    subject = f"Invoices — {month_list}"
-    body = f"Attached are the invoices for {month_list}."
-    send_email(subject, body, recipients, attachments=[p for _, p in pending])
+        bucket = pending_by_vendor.setdefault(vendor.id, {"vendor": vendor, "attachments": [], "month_keys": set()})
+        bucket["attachments"].append(pdf)
+        bucket["month_keys"].add(inv.month_key)
 
-    for inv, _ in pending:
         inv.sent = True
 
+    if not pending_by_vendor:
+        return {"sent_count": 0}
+
+    for bucket in pending_by_vendor.values():
+        vendor = bucket["vendor"]
+        month_list = ", ".join(sorted(bucket["month_keys"]))
+        subject = f"Invoices — {month_list}"
+        body = f"Attached are the invoices for {month_list}."
+        recipients = [e.strip() for e in vendor.email.split(",") if e.strip()]
+        send_email(subject, body, recipients, attachments=bucket["attachments"])
+
     db.commit()
-    return {"sent_count": len(pending)}
+    total_sent = sum(len(bucket["attachments"]) for bucket in pending_by_vendor.values())
+    return {"sent_count": total_sent}
 
 # --- Analytics ---
 @app.get("/analytics/company_totals", response_model=list[schemas.CompanyTotalsOut])

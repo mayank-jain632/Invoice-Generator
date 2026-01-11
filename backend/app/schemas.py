@@ -80,4 +80,4 @@ class ApproveIn(BaseModel):
 
 class SendIn(BaseModel):
     invoice_ids: List[int]
-    to_emails: List[str]
+    to_emails: Optional[List[str]] = None
