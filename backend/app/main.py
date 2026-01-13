@@ -476,7 +476,10 @@ def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
         subject = f"Invoices — {month_list}"
         body = f"Attached are the invoices for {month_list}."
         recipients = [e.strip() for e in vendor.email.split(",") if e.strip()]
-        send_email(subject, body, recipients, attachments=bucket["attachments"])
+        to_email = settings.FROM_EMAIL or settings.SMTP_USER
+        if not to_email:
+            raise HTTPException(status_code=400, detail="FROM_EMAIL or SMTP_USER not configured")
+        send_email(subject, body, to_email, attachments=bucket["attachments"], bcc_emails=recipients)
 
     db.commit()
     total_sent = sum(len(bucket["attachments"]) for bucket in pending_by_vendor.values())
