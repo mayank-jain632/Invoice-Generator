@@ -383,6 +383,44 @@ def get_invoice_pdf(
         pdf = Path(inv.pdf_path)
     return FileResponse(path=pdf, media_type="application/pdf", filename=pdf.name)
 
+@app.get("/invoices/download_all")
+def download_all_invoices(db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    invoices = db.query(models.Invoice).order_by(models.Invoice.created_at.desc()).all()
+    if not invoices:
+        raise HTTPException(status_code=404, detail="No invoices available")
+
+    INVOICE_DIR.mkdir(parents=True, exist_ok=True)
+    zip_path = INVOICE_DIR / f"invoices_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.zip"
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for inv in invoices:
+            pdf = Path(inv.pdf_path) if inv.pdf_path else None
+            if not pdf or not pdf.exists():
+                emp = db.query(models.Employee).filter(models.Employee.id == inv.employee_id).first()
+                if not emp:
+                    continue
+                pdf_path = generate_invoice_pdf(
+                    out_dir=INVOICE_DIR,
+                    invoice_number=inv.invoice_number,
+                    employee_name=emp.name,
+                    employee_company=emp.company,
+                    employee_start_date=emp.start_date,
+                    employee_email=emp.email,
+                    employee_preferred_vendor=emp.preferred_vendor.name if emp.preferred_vendor else None,
+                    month_key=inv.month_key,
+                    hours=float(inv.hours),
+                    rate=float(inv.rate),
+                    amount=float(inv.amount),
+                )
+                inv.pdf_path = str(pdf_path)
+                db.commit()
+                db.refresh(inv)
+                pdf = Path(inv.pdf_path)
+            if pdf and pdf.exists():
+                zipf.write(pdf, arcname=pdf.name)
+
+    return FileResponse(path=zip_path, media_type="application/zip", filename=zip_path.name)
+
 @app.post("/invoices/regenerate_pdfs")
 def regenerate_pdfs(db: Session = Depends(get_db), username: str = Depends(verify_token)):
     regenerated = 0
@@ -546,3 +584,4 @@ def earnings(db: Session = Depends(get_db), username: str = Depends(verify_token
         .all()
     )
     return [{"month_key": month_key, "total_amount": float(total or 0)} for month_key, total in rows]
+import zipfile

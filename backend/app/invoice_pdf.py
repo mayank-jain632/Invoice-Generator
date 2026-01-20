@@ -41,8 +41,8 @@ def generate_invoice_pdf(
     date_str = month_date.strftime("%d-%b-%y").lstrip("0")
     currency_label = "$" if settings.DEFAULT_CURRENCY.upper() == "USD" else settings.DEFAULT_CURRENCY
     company_addresses = {
-        "Swift Bot Technologies": "123 Swift Bot Ave, Metropolis, NY 10001",
-        "ORM": "456 ORM Way, Gotham, CA 94105",
+        "Swift Bot Technologies": "1712 PIONEER AVE STE 500 CHEYENNE, WY 82001",
+        "ORM": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
     }
     company_address = company_addresses.get(employee_company or "", "Address on file")
 

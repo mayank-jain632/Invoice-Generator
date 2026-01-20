@@ -207,6 +207,12 @@ export default function InvoicesPage() {
           <div className="px-8 py-6 border-b border-slate-700/50">
             <h3 className="text-lg font-semibold text-white mb-4">All Invoices</h3>
             <div className="flex gap-2 flex-wrap">
+              <a
+                href={`${process.env.NEXT_PUBLIC_API_URL || "/api"}/invoices/download_all${token ? `?token=${encodeURIComponent(token)}` : ""}`}
+                className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"
+              >
+                Preview All
+              </a>
               <button
                 onClick={selectAllInvoices}
                 className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"
