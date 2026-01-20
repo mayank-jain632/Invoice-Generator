@@ -41,13 +41,15 @@ def generate_invoice_pdf(
     date_str = month_date.strftime("%d-%b-%y").lstrip("0")
     currency_label = "$" if settings.DEFAULT_CURRENCY.upper() == "USD" else settings.DEFAULT_CURRENCY
     company_addresses = {
-        "Swift Bot Technologies": "1712 PIONEER AVE STE 500 CHEYENNE, WY 82001",
-        "ORM": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
+        "swift bot technologies": "1712 PIONEER AVE STE 500 CHEYENNE, WY 82001",
+        "orm": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
     }
-    company_address = company_addresses.get(employee_company or "", "Address on file")
+    company_name = employee_company or settings.COMPANY_NAME
+    company_key = (employee_company or "").strip().lower()
+    company_address = company_addresses.get(company_key, "Address on file")
 
     c.setFont("Helvetica-Bold", 11)
-    c.drawString(left, top_bar_y + 14, employee_company or settings.COMPANY_NAME)
+    c.drawString(left, top_bar_y + 14, company_name)
     c.setFont("Helvetica", 8)
     c.drawString(left, top_bar_y + 2, company_address)
     c.setFont("Helvetica", 9)
@@ -64,7 +66,7 @@ def generate_invoice_pdf(
     c.setFont("Helvetica", 9)
     c.drawString(left, y, f"Name: {employee_name}")
     y -= 12
-    c.drawString(left, y, f"Preferred Vendor: {employee_preferred_vendor or 'N/A'}")
+    c.drawString(left, y, f"Company: {company_name or 'N/A'}")
 
     y -= 26
     c.setFont("Helvetica-Bold", 9)

@@ -267,25 +267,22 @@ def generate_invoices(payload: schemas.InvoiceCreateIn, db: Session = Depends(ge
             .first()
         )
         if existing:
-            # If PDF missing, regenerate and update
-            pdf_missing = not existing.pdf_path or not Path(existing.pdf_path).exists()
-            if pdf_missing:
-                pdf_path = generate_invoice_pdf(
-                    out_dir=INVOICE_DIR,
-                    invoice_number=existing.invoice_number,
-                    employee_name=emp.name,
-                    employee_company=emp.company,
-                    employee_start_date=emp.start_date,
-                    employee_email=emp.email,
-                    employee_preferred_vendor=emp.preferred_vendor.name if emp.preferred_vendor else None,
-                    month_key=payload.month_key,
-                    hours=float(existing.hours),
-                    rate=float(existing.rate),
-                    amount=float(existing.amount),
-                )
-                existing.pdf_path = str(pdf_path)
-                db.commit()
-                db.refresh(existing)
+            pdf_path = generate_invoice_pdf(
+                out_dir=INVOICE_DIR,
+                invoice_number=existing.invoice_number,
+                employee_name=emp.name,
+                employee_company=emp.company,
+                employee_start_date=emp.start_date,
+                employee_email=emp.email,
+                employee_preferred_vendor=emp.preferred_vendor.name if emp.preferred_vendor else None,
+                month_key=payload.month_key,
+                hours=float(existing.hours),
+                rate=float(existing.rate),
+                amount=float(existing.amount),
+            )
+            existing.pdf_path = str(pdf_path)
+            db.commit()
+            db.refresh(existing)
             invoices_out.append(existing)
             continue
 
@@ -384,7 +381,11 @@ def get_invoice_pdf(
     return FileResponse(path=pdf, media_type="application/pdf", filename=pdf.name)
 
 @app.get("/invoices/download_all")
-def download_all_invoices(db: Session = Depends(get_db), username: str = Depends(verify_token)):
+def download_all_invoices(
+    token: str | None = None,
+    db: Session = Depends(get_db),
+    username: str = Depends(verify_token_optional),
+):
     invoices = db.query(models.Invoice).order_by(models.Invoice.created_at.desc()).all()
     if not invoices:
         raise HTTPException(status_code=404, detail="No invoices available")
