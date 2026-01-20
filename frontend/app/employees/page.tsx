@@ -22,6 +22,11 @@ type Vendor = {
 };
 
 export default function EmployeesPage() {
+  function authHeaders() {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [vendorName, setVendorName] = useState("");
@@ -102,7 +107,13 @@ export default function EmployeesPage() {
     setErr(null);
     try {
       const API = process.env.NEXT_PUBLIC_API_URL || "/api";
-      await fetch(`${API}/employees/${id}`, { method: "DELETE" });
+      const res = await fetch(`${API}/employees/${id}`, {
+        method: "DELETE",
+        headers: {
+          ...authHeaders(),
+        },
+      });
+      if (!res.ok) throw new Error(await res.text());
       await refresh();
     } catch (e: any) {
       setErr(e.message);
@@ -127,9 +138,12 @@ export default function EmployeesPage() {
     }
     try {
       const API = process.env.NEXT_PUBLIC_API_URL || "/api";
-      await fetch(`${API}/employees/${id}`, {
+      const res = await fetch(`${API}/employees/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
         body: JSON.stringify({
           name: editName,
           hourly_rate: Number(editRate),
@@ -139,6 +153,7 @@ export default function EmployeesPage() {
           preferred_vendor_id: Number(editPreferredVendor),
         }),
       });
+      if (!res.ok) throw new Error(await res.text());
       setEditingId(null);
       await refresh();
     } catch (e: any) {
@@ -169,7 +184,13 @@ export default function EmployeesPage() {
     setErr(null);
     try {
       const API = process.env.NEXT_PUBLIC_API_URL || "/api";
-      await fetch(`${API}/vendors/${id}`, { method: "DELETE" });
+      const res = await fetch(`${API}/vendors/${id}`, {
+        method: "DELETE",
+        headers: {
+          ...authHeaders(),
+        },
+      });
+      if (!res.ok) throw new Error(await res.text());
       await refresh();
     } catch (e: any) {
       setErr(e.message);
@@ -190,11 +211,15 @@ export default function EmployeesPage() {
     }
     try {
       const API = process.env.NEXT_PUBLIC_API_URL || "/api";
-      await fetch(`${API}/vendors/${id}`, {
+      const res = await fetch(`${API}/vendors/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
         body: JSON.stringify({ name: editVendorName, email: editVendorEmail }),
       });
+      if (!res.ok) throw new Error(await res.text());
       setEditingVendorId(null);
       await refresh();
     } catch (e: any) {
