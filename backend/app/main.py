@@ -15,7 +15,7 @@ from .emailer import send_timesheet_reminder, send_email
 from .settings import settings
 from .auth import verify_token, verify_token_optional, create_access_token, verify_credentials
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func
+from sqlalchemy import func, case
 from pydantic import BaseModel
 
 # Configure logging
@@ -518,7 +518,7 @@ def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
         to_email = settings.FROM_EMAIL or settings.SMTP_USER
         if not to_email:
             raise HTTPException(status_code=400, detail="FROM_EMAIL or SMTP_USER not configured")
-        send_email(subject, body, to_email, attachments=bucket["attachments"], bcc_emails=recipients)
+        send_email(subject, body, to_email, attachments=bucket["attachments"], cc_emails=recipients)
 
     db.commit()
     total_sent = sum(len(bucket["attachments"]) for bucket in pending_by_vendor.values())
@@ -527,6 +527,12 @@ def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
 # --- Analytics ---
 @app.get("/analytics/company_totals", response_model=list[schemas.CompanyTotalsOut])
 def company_totals(month_key: str | None = None, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    def normalize_company(name: str) -> str:
+        key = (name or "").strip().lower()
+        if "swift bot" in key or "swiftbot" in key:
+            return "Swift Bot Technologies"
+        return name or "Unassigned"
+
     if not month_key:
         month_key = (
             db.query(func.max(models.Invoice.month_key))
@@ -535,7 +541,17 @@ def company_totals(month_key: str | None = None, db: Session = Depends(get_db), 
         )
         if not month_key:
             return []
-    company_expr = func.coalesce(models.Employee.company, "Unassigned")
+    company_expr = case(
+        (
+            func.lower(func.coalesce(models.Employee.company, "")).like("%swift bot%"),
+            "Swift Bot Technologies",
+        ),
+        (
+            func.lower(func.coalesce(models.Employee.company, "")).like("%swiftbot%"),
+            "Swift Bot Technologies",
+        ),
+        else_=func.coalesce(models.Employee.company, "Unassigned"),
+    )
     rows = (
         db.query(company_expr.label("company"), func.sum(models.Invoice.amount).label("total_amount"))
         .join(models.Invoice, models.Invoice.employee_id == models.Employee.id)
@@ -547,13 +563,14 @@ def company_totals(month_key: str | None = None, db: Session = Depends(get_db), 
 
     totals = []
     for company, total in rows:
+        normalized_company = normalize_company(company)
         payment = (
             db.query(models.CompanyPayment)
-            .filter(models.CompanyPayment.company == company, models.CompanyPayment.month_key == month_key)
+            .filter(models.CompanyPayment.company == normalized_company, models.CompanyPayment.month_key == month_key)
             .first()
         )
         totals.append({
-            "company": company,
+            "company": normalized_company,
             "month_key": month_key,
             "total_amount": float(total or 0),
             "paid": bool(payment.paid) if payment else False,
@@ -562,18 +579,25 @@ def company_totals(month_key: str | None = None, db: Session = Depends(get_db), 
 
 @app.post("/analytics/company_totals/mark_paid")
 def mark_company_paid(payload: schemas.CompanyTotalsIn, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    def normalize_company(name: str) -> str:
+        key = (name or "").strip().lower()
+        if "swift bot" in key or "swiftbot" in key:
+            return "Swift Bot Technologies"
+        return name or "Unassigned"
+
+    company = normalize_company(payload.company)
     record = (
         db.query(models.CompanyPayment)
-        .filter(models.CompanyPayment.company == payload.company, models.CompanyPayment.month_key == payload.month_key)
+        .filter(models.CompanyPayment.company == company, models.CompanyPayment.month_key == payload.month_key)
         .first()
     )
     if not record:
-        record = models.CompanyPayment(company=payload.company, month_key=payload.month_key, paid=False)
+        record = models.CompanyPayment(company=company, month_key=payload.month_key, paid=False)
         db.add(record)
     record.paid = payload.paid
     record.paid_at = datetime.utcnow() if payload.paid else None
     db.commit()
-    return {"company": payload.company, "month_key": payload.month_key, "paid": record.paid}
+    return {"company": company, "month_key": payload.month_key, "paid": record.paid}
 
 @app.get("/analytics/earnings", response_model=list[schemas.EarningsPoint])
 def earnings(db: Session = Depends(get_db), username: str = Depends(verify_token)):

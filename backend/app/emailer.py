@@ -9,7 +9,7 @@ def send_email(
     body: str,
     to_emails: str | Iterable[str],
     attachments: list[Path] | None = None,
-    bcc_emails: Iterable[str] | None = None,
+    cc_emails: Iterable[str] | None = None,
 ):
     if isinstance(to_emails, str):
         recipients = [to_emails]
@@ -18,14 +18,14 @@ def send_email(
 
     if not recipients:
         raise ValueError("No recipients provided")
-    bcc = [e for e in (bcc_emails or []) if e]
+    cc = [e for e in (cc_emails or []) if e]
 
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = settings.FROM_EMAIL or settings.SMTP_USER
     msg["To"] = ", ".join(recipients)
-    if bcc:
-        msg["Bcc"] = ", ".join(bcc)
+    if cc:
+        msg["Cc"] = ", ".join(cc)
     msg.set_content(body)
 
     attachments = attachments or []
