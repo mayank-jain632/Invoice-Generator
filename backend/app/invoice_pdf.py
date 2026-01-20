@@ -45,7 +45,7 @@ def generate_invoice_pdf(
         "orm": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
     }
     company_name = employee_company or settings.COMPANY_NAME
-    company_key = (employee_company or "").strip().lower()
+    company_key = company_name.strip().lower()
     company_address = company_addresses.get(company_key, "Address on file")
 
     c.setFont("Helvetica-Bold", 11)
@@ -66,7 +66,7 @@ def generate_invoice_pdf(
     c.setFont("Helvetica", 9)
     c.drawString(left, y, f"Name: {employee_name}")
     y -= 12
-    c.drawString(left, y, f"Company: {company_name or 'N/A'}")
+    c.drawString(left, y, f"{company_name or 'N/A'}")
 
     y -= 26
     c.setFont("Helvetica-Bold", 9)
