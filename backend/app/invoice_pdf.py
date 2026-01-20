@@ -41,8 +41,9 @@ def generate_invoice_pdf(
     date_str = month_date.strftime("%d-%b-%y").lstrip("0")
     currency_label = "$" if settings.DEFAULT_CURRENCY.upper() == "USD" else settings.DEFAULT_CURRENCY
     company_addresses = {
-        "SwiftBot Technologies": "1712 PIONEER AVE STE 500 CHEYENNE, WY 82001",
-        "Open Robo Minds Inc": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
+        "swift bot technologies": "1712 PIONEER AVE STE 500 CHEYENNE, WY 82001",
+        "swiftbot technologies": "1712 PIONEER AVE STE 500 CHEYENNE, WY 82001",
+        "open robo minds inc": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
     }
     company_name = employee_company or settings.COMPANY_NAME
     company_key = company_name.strip().lower()
