@@ -26,14 +26,14 @@ def generate_invoice_pdf(
     c = canvas.Canvas(str(pdf_path), pagesize=LETTER)
     w, h = LETTER
 
-    left = 50
-    right = w - 50
+    left = 60
+    right = w - 60
     bar_height = 40
-    top_bar_y = h - 80
-    bottom_bar_y = 40
+    top_bar_y = h - 90
+    bottom_bar_y = 50
 
     c.setStrokeColor(colors.HexColor("#D1D5DB"))
-    c.rect(30, 30, w - 60, h - 60, stroke=1, fill=0)
+    c.rect(24, 24, w - 48, h - 48, stroke=1, fill=0)
 
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 14)
@@ -52,7 +52,7 @@ def generate_invoice_pdf(
         "swiftbot technologies": "1712 PIONEER AVE STE 500 CHEYENNE, WY 82001",
         "open robo minds inc": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
     }
-    company_name = employee_preferred_vendor or employee_company or settings.COMPANY_NAME
+    company_name = employee_company or settings.COMPANY_NAME
     company_key = company_name.strip().lower()
     company_address = company_addresses.get(company_key, "Address on file")
 
@@ -74,7 +74,7 @@ def generate_invoice_pdf(
     c.setFont("Helvetica", 9)
     c.drawString(left, y, f"Name: {employee_name}")
     y -= 12
-    c.drawString(left, y, f"{company_name or 'N/A'}")
+    c.drawString(left, y, f"{employee_preferred_vendor or 'N/A'}")
 
     y -= 26
     c.setFont("Helvetica-Bold", 9)
