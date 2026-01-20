@@ -260,16 +260,6 @@ export default function InvoicesPage() {
                     <span>{vendorName}</span>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => {
-                          const next = { ...selectedInv };
-                          vendorInvoices.forEach(inv => { next[inv.id] = true; });
-                          setSelectedInv(next);
-                        }}
-                        className="text-xs rounded-lg border border-slate-600 px-3 py-1.5 hover:bg-slate-800/60 text-slate-200 transition-colors"
-                      >
-                        Select Vendor
-                      </button>
-                      <button
                         onClick={() => sendVendorSelected(vendorInvoices)}
                         className="text-xs rounded-lg border border-emerald-500/40 text-emerald-300 px-3 py-1.5 hover:bg-emerald-500/10 transition-colors"
                       >
@@ -291,14 +281,12 @@ export default function InvoicesPage() {
                             <input
                               type="checkbox"
                               className="rounded"
-                              checked={invoices.length > 0 && invoices.every(inv => selectedInv[inv.id])}
+                              checked={vendorInvoices.length > 0 && vendorInvoices.every(inv => selectedInv[inv.id])}
                               onChange={ev => {
                                 const checked = ev.target.checked;
-                                if (checked) {
-                                  selectAllInvoices();
-                                } else {
-                                  deselectAllInvoices();
-                                }
+                                const next = { ...selectedInv };
+                                vendorInvoices.forEach(inv => { next[inv.id] = checked; });
+                                setSelectedInv(next);
                               }}
                             />
                           </th>

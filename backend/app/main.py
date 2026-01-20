@@ -513,12 +513,13 @@ def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
         vendor = bucket["vendor"]
         month_list = ", ".join(sorted(bucket["month_keys"]))
         subject = f"Invoices — {month_list}"
-        body = f"Attached are the invoices for {month_list}."
+        body = (
+            "Hi all,\n\n"
+            f"Please find attached the invoices for {month_list}.\n\n"
+            f"Thanks,\n{settings.COMPANY_NAME}"
+        )
         recipients = [e.strip() for e in vendor.email.split(",") if e.strip()]
-        to_email = settings.FROM_EMAIL or settings.SMTP_USER
-        if not to_email:
-            raise HTTPException(status_code=400, detail="FROM_EMAIL or SMTP_USER not configured")
-        send_email(subject, body, to_email, attachments=bucket["attachments"], cc_emails=recipients)
+        send_email(subject, body, recipients, attachments=bucket["attachments"])
 
     db.commit()
     total_sent = sum(len(bucket["attachments"]) for bucket in pending_by_vendor.values())

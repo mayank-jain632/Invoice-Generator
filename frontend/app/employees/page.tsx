@@ -286,7 +286,7 @@ export default function EmployeesPage() {
                 />
                 <datalist id="company-options-add">
                   <option value="Swift Bot Technologies" />
-                  <option value="ORM" />
+                  <option value="Open Robo Minds Inc" />
                 </datalist>
               </div>
               <div>
