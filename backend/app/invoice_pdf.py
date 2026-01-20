@@ -32,6 +32,13 @@ def generate_invoice_pdf(
     top_bar_y = h - 80
     bottom_bar_y = 40
 
+    c.setStrokeColor(colors.HexColor("#D1D5DB"))
+    c.rect(30, 30, w - 60, h - 60, stroke=1, fill=0)
+
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 14)
+    c.drawCentredString(w / 2, h - 40, "INVOICE")
+
     c.setFillColor(colors.HexColor("#F2F2F2"))
     c.rect(left - 10, top_bar_y, w - 2 * (left - 10), bar_height, stroke=0, fill=1)
     c.rect(left - 10, bottom_bar_y, w - 2 * (left - 10), bar_height, stroke=0, fill=1)
@@ -45,7 +52,7 @@ def generate_invoice_pdf(
         "swiftbot technologies": "1712 PIONEER AVE STE 500 CHEYENNE, WY 82001",
         "open robo minds inc": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
     }
-    company_name = employee_company or settings.COMPANY_NAME
+    company_name = employee_preferred_vendor or employee_company or settings.COMPANY_NAME
     company_key = company_name.strip().lower()
     company_address = company_addresses.get(company_key, "Address on file")
 
