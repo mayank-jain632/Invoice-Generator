@@ -18,6 +18,8 @@ export default function InvoicesPage() {
   const [monthKey, setMonthKey] = useState("2025-12");
   const [selectedEmp, setSelectedEmp] = useState<Record<number, boolean>>({});
   const [selectedInv, setSelectedInv] = useState<Record<number, boolean>>({});
+  const [employeeVendorFilter, setEmployeeVendorFilter] = useState<string>("all");
+  const [invoiceVendorFilter, setInvoiceVendorFilter] = useState<string>("all");
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -154,6 +156,19 @@ export default function InvoicesPage() {
                 onChange={e => setMonthKey(e.target.value)}
               />
             </div>
+            <div className="w-64">
+              <label className="block text-xs font-medium text-slate-300 mb-2">Filter by Vendor</label>
+              <select
+                className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-3 py-2.5 text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
+                value={employeeVendorFilter}
+                onChange={e => setEmployeeVendorFilter(e.target.value)}
+              >
+                <option value="all">All Vendors</option>
+                {vendors.map(v => (
+                  <option key={v.id} value={v.id.toString()}>{v.name}</option>
+                ))}
+              </select>
+            </div>
             <button
               onClick={generate}
               className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 text-sm font-semibold transition-colors"
@@ -180,11 +195,13 @@ export default function InvoicesPage() {
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {employees.map(e => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {employees
+                .filter(e => employeeVendorFilter === "all" || e.preferred_vendor_id?.toString() === employeeVendorFilter)
+                .map(e => (
                 <label
                   key={e.id}
-                  className="flex items-center gap-3 p-4 rounded-lg border border-slate-700 hover:border-slate-600 bg-slate-800/20 hover:bg-slate-800/40 cursor-pointer transition-all"
+                  className="flex items-center gap-3 p-3 rounded-lg border border-slate-700 hover:border-slate-600 bg-slate-800/20 hover:bg-slate-800/40 cursor-pointer transition-all"
                 >
                   <input
                     type="checkbox"
@@ -194,7 +211,6 @@ export default function InvoicesPage() {
                   />
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-white text-sm">{e.name}</div>
-                    <div className="text-xs text-slate-400">${e.hourly_rate.toFixed(2)}/hr</div>
                   </div>
                 </label>
               ))}
@@ -206,7 +222,17 @@ export default function InvoicesPage() {
         <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm overflow-hidden">
           <div className="px-8 py-6 border-b border-slate-700/50">
             <h3 className="text-lg font-semibold text-white mb-4">All Invoices</h3>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
+              <select
+                className="rounded-lg bg-slate-950/50 border border-slate-700 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/20 transition-all"
+                value={invoiceVendorFilter}
+                onChange={e => setInvoiceVendorFilter(e.target.value)}
+              >
+                <option value="all">All Vendors</option>
+                {vendors.map(v => (
+                  <option key={v.id} value={v.name}>{v.name}</option>
+                ))}
+              </select>
               <a
                 href={`${process.env.NEXT_PUBLIC_API_URL || "/api"}/invoices/download_all${token ? `?token=${encodeURIComponent(token)}` : ""}`}
                 className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"
@@ -250,6 +276,9 @@ export default function InvoicesPage() {
                 invoices.reduce<Record<string, Invoice[]>>((acc, inv) => {
                   const emp = employees.find(e => e.id === inv.employee_id);
                   const vendorName = vendors.find(v => v.id === emp?.preferred_vendor_id)?.name || "Unassigned Vendor";
+                  if (invoiceVendorFilter !== "all" && vendorName !== invoiceVendorFilter) {
+                    return acc;
+                  }
                   acc[vendorName] = acc[vendorName] || [];
                   acc[vendorName].push(inv);
                   return acc;
