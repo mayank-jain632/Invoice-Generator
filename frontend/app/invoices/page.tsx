@@ -237,7 +237,7 @@ export default function InvoicesPage() {
                 href={`${process.env.NEXT_PUBLIC_API_URL || "/api"}/invoices/download_all${token ? `?token=${encodeURIComponent(token)}` : ""}`}
                 className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"
               >
-                Preview All
+                Download All
               </a>
               <button
                 onClick={selectAllInvoices}
@@ -360,7 +360,7 @@ export default function InvoicesPage() {
                                   rel="noreferrer"
                                   className="text-xs rounded-lg border border-slate-600 px-3 py-1.5 hover:bg-slate-800/60 text-slate-200 transition-colors"
                                 >
-                                  Preview
+                                  Download
                                 </a>
                               </td>
                             </tr>
