@@ -83,8 +83,8 @@ export default function EmployeesPage() {
 
   async function addEmployee() {
     setErr(null);
-    if (!name || !rate || !company || !startDate || !preferredVendor) {
-      setErr("Name, hourly rate, company, start date, and preferred vendor are required");
+    if (!name || !rate || !company || !preferredVendor) {
+      setErr("Name, hourly rate, company, and preferred vendor are required");
       return;
     }
     try {
@@ -93,7 +93,7 @@ export default function EmployeesPage() {
         hourly_rate: Number(rate),
         email: email || null,
         company,
-        start_date: startDate,
+        start_date: startDate || null,
         preferred_vendor_id: Number(preferredVendor),
       });
       setName(""); setRate(""); setEmail(""); setCompany(""); setStartDate(""); setPreferredVendor("");
@@ -132,8 +132,8 @@ export default function EmployeesPage() {
 
   async function saveEdit(id: number) {
     setErr(null);
-    if (!editName || !editRate || !editCompany || !editStartDate || !editPreferredVendor) {
-      setErr("Name, hourly rate, company, start date, and preferred vendor are required");
+    if (!editName || !editRate || !editCompany || !editPreferredVendor) {
+      setErr("Name, hourly rate, company, and preferred vendor are required");
       return;
     }
     try {
@@ -149,7 +149,7 @@ export default function EmployeesPage() {
           hourly_rate: Number(editRate),
           email: editEmail || null,
           company: editCompany,
-          start_date: editStartDate,
+          start_date: editStartDate || null,
           preferred_vendor_id: Number(editPreferredVendor),
         }),
       });
