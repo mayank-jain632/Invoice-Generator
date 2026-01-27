@@ -51,6 +51,7 @@ export default function EmployeesPage() {
   const [editPreferredVendor, setEditPreferredVendor] = useState("");
   const [monthKey, setMonthKey] = useState("2025-12");
   const [monthlyHours, setMonthlyHours] = useState<Record<number, number>>({});
+  const [employeeVendorFilter, setEmployeeVendorFilter] = useState<string>("all");
 
   async function refresh() {
     setErr(null);
@@ -429,7 +430,19 @@ export default function EmployeesPage() {
         {/* Employees List */}
         <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm overflow-hidden">
           <div className="px-8 py-6 border-b border-slate-700/50">
-            <h3 className="text-lg font-semibold text-white">Active Employees</h3>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h3 className="text-lg font-semibold text-white">Active Employees</h3>
+              <select
+                className="rounded-lg bg-slate-950/50 border border-slate-700 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
+                value={employeeVendorFilter}
+                onChange={e => setEmployeeVendorFilter(e.target.value)}
+              >
+                <option value="all">All Vendors</option>
+                {vendors.map(v => (
+                  <option key={v.id} value={v.id.toString()}>{v.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -452,7 +465,9 @@ export default function EmployeesPage() {
                 ) : employees.length === 0 ? (
                   <tr><td colSpan={9} className="px-8 py-6 text-center text-slate-400">No employees yet. Add one above.</td></tr>
                 ) : (
-                  employees.map(e => (
+                  employees
+                    .filter(e => employeeVendorFilter === "all" || e.preferred_vendor_id?.toString() === employeeVendorFilter)
+                    .map(e => (
                     <tr key={e.id} className="hover:bg-slate-800/30 transition-colors">
                       <td className="px-8 py-4 text-sm font-medium text-white">
                         {editingId === e.id ? (
