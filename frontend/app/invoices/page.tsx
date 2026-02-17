@@ -80,7 +80,7 @@ export default function InvoicesPage() {
 
   function selectAllInvoices() {
     const newSelected: Record<number, boolean> = {};
-    invoices.forEach(i => newSelected[i.id] = true);
+    visibleInvoices.forEach(i => newSelected[i.id] = true);
     setSelectedInv(newSelected);
   }
 
@@ -90,7 +90,7 @@ export default function InvoicesPage() {
 
   async function send() {
     setErr(null); setOk(null);
-    const ids = invoices.filter(i => selectedInv[i.id]).map(i => i.id);
+    const ids = visibleInvoices.filter(i => selectedInv[i.id]).map(i => i.id);
     if (ids.length === 0) {
       setErr("Select at least one invoice");
       return;
@@ -140,6 +140,7 @@ export default function InvoicesPage() {
     if (sent) return { text: "Sent", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
     return { text: "Draft", color: "bg-slate-500/20 text-slate-300 border-slate-500/30" };
   };
+  const visibleInvoices = invoices.filter(inv => !inv.sent);
 
   return (
     <Shell>
@@ -275,11 +276,11 @@ export default function InvoicesPage() {
           <div className="space-y-6">
             {loading ? (
               <div className="px-8 py-8 text-center text-slate-400">Loading...</div>
-            ) : invoices.length === 0 ? (
+            ) : visibleInvoices.length === 0 ? (
               <div className="px-8 py-8 text-center text-slate-400">No invoices yet. Generate one above.</div>
             ) : (
               Object.entries(
-                invoices.reduce<Record<string, Invoice[]>>((acc, inv) => {
+                visibleInvoices.reduce<Record<string, Invoice[]>>((acc, inv) => {
                   const emp = employees.find(e => e.id === inv.employee_id);
                   const vendorName = vendors.find(v => v.id === emp?.preferred_vendor_id)?.name || "Unassigned Vendor";
                   if (invoiceVendorFilter !== "all" && vendorName !== invoiceVendorFilter) {
