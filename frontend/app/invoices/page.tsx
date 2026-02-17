@@ -13,6 +13,7 @@ type Invoice = {
 
 export default function InvoicesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [activeEmployees, setActiveEmployees] = useState<Employee[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [monthKey, setMonthKey] = useState("2025-12");
@@ -29,12 +30,14 @@ export default function InvoicesPage() {
     setErr(null);
     setLoading(true);
     try {
-      const [emps, invs] = await Promise.all([
+      const [emps, activeEmps, invs, vends] = await Promise.all([
         apiGet<Employee[]>("/employees"),
+        apiGet<Employee[]>(`/employees?month_key=${encodeURIComponent(monthKey)}&active_only=true`),
         apiGet<Invoice[]>("/invoices"),
+        apiGet<Vendor[]>("/vendors"),
       ]);
-      const vends = await apiGet<Vendor[]>("/vendors");
       setEmployees(emps);
+      setActiveEmployees(activeEmps);
       setInvoices(invs);
       setVendors(vends);
     } catch (e: any) {
@@ -44,11 +47,14 @@ export default function InvoicesPage() {
     }
   }
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    setSelectedEmp({});
+    refresh();
+  }, [monthKey]);
 
   async function generate() {
     setErr(null); setOk(null);
-    const ids = employees.filter(e => selectedEmp[e.id]).map(e => e.id);
+    const ids = activeEmployees.filter(e => selectedEmp[e.id]).map(e => e.id);
     if (ids.length === 0) {
       setErr("Select at least one employee");
       return;
@@ -64,7 +70,7 @@ export default function InvoicesPage() {
 
   function selectAllEmployees() {
     const newSelected: Record<number, boolean> = {};
-    employees.forEach(e => newSelected[e.id] = true);
+    activeEmployees.forEach(e => newSelected[e.id] = true);
     setSelectedEmp(newSelected);
   }
 
@@ -196,7 +202,7 @@ export default function InvoicesPage() {
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-              {employees
+              {activeEmployees
                 .filter(e => employeeVendorFilter === "all" || e.preferred_vendor_id?.toString() === employeeVendorFilter)
                 .map(e => (
                 <label

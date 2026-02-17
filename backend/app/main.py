@@ -139,11 +139,26 @@ def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_d
     return emp
 
 @app.get("/employees", response_model=list[schemas.EmployeeOut])
-def list_employees(db: Session = Depends(get_db), username: str = Depends(verify_token)):
+def list_employees(
+    month_key: str | None = None,
+    active_only: bool = False,
+    db: Session = Depends(get_db),
+    username: str = Depends(verify_token),
+):
     try:
-        employees = db.query(models.Employee).order_by(models.Employee.name.asc()).all()
+        query = db.query(models.Employee)
+        if active_only:
+            if not month_key:
+                raise HTTPException(status_code=400, detail="month_key is required when active_only=true")
+            query = (
+                query.join(models.EmployeeMonth, models.EmployeeMonth.employee_id == models.Employee.id)
+                .filter(models.EmployeeMonth.month_key == month_key, models.EmployeeMonth.hours > 0)
+            )
+        employees = query.order_by(models.Employee.name.asc()).all()
         logger.info(f"Retrieved {len(employees)} employees")
         return employees
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching employees: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
