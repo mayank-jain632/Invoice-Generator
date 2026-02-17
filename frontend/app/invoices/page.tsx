@@ -136,6 +136,23 @@ export default function InvoicesPage() {
     }
   }
 
+  function downloadSelected() {
+    setErr(null);
+    const ids = visibleInvoices.filter(i => selectedInv[i.id]).map(i => i.id);
+    if (ids.length === 0) {
+      setErr("Select at least one invoice to download");
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set("invoice_ids", ids.join(","));
+    if (token) {
+      params.set("token", token);
+    }
+    const base = process.env.NEXT_PUBLIC_API_URL || "/api";
+    window.open(`${base}/invoices/download_all?${params.toString()}`, "_blank");
+  }
+
   const getStatusBadge = (sent: boolean) => {
     if (sent) return { text: "Sent", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
     return { text: "Draft", color: "bg-slate-500/20 text-slate-300 border-slate-500/30" };
@@ -240,12 +257,12 @@ export default function InvoicesPage() {
                   <option key={v.id} value={v.name}>{v.name}</option>
                 ))}
               </select>
-              <a
-                href={`${process.env.NEXT_PUBLIC_API_URL || "/api"}/invoices/download_all${token ? `?token=${encodeURIComponent(token)}` : ""}`}
+              <button
+                onClick={downloadSelected}
                 className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"
               >
-                Download All
-              </a>
+                Download Selected
+              </button>
               <button
                 onClick={selectAllInvoices}
                 className="rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-800/50 text-white px-4 py-2 text-sm font-semibold transition-colors"

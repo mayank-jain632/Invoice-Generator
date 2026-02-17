@@ -398,10 +398,21 @@ def get_invoice_pdf(
 @app.get("/invoices/download_all")
 def download_all_invoices(
     token: str | None = None,
+    invoice_ids: str | None = None,
     db: Session = Depends(get_db),
     username: str = Depends(verify_token_optional),
 ):
-    invoices = db.query(models.Invoice).order_by(models.Invoice.created_at.desc()).all()
+    query = db.query(models.Invoice)
+    if invoice_ids:
+        try:
+            ids = [int(v.strip()) for v in invoice_ids.split(",") if v.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invoice_ids must be a comma-separated list of integers")
+        if not ids:
+            raise HTTPException(status_code=400, detail="No valid invoice_ids provided")
+        query = query.filter(models.Invoice.id.in_(ids))
+
+    invoices = query.order_by(models.Invoice.created_at.desc()).all()
     if not invoices:
         raise HTTPException(status_code=404, detail="No invoices available")
 
