@@ -1,8 +1,16 @@
 "use client";
-import { useRouter } from "next/navigation";
+
+import { usePathname, useRouter } from "next/navigation";
+
+const navItems = [
+  { href: "/", label: "Workbook" },
+  { href: "/employees", label: "Directory" },
+  { href: "/analytics", label: "Analytics" },
+];
 
 export default function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
 
   function handleLogout() {
     localStorage.removeItem("token");
@@ -10,38 +18,48 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
-      {/* Navigation Bar */}
-      <nav className="border-b border-slate-800/50 bg-slate-950/40 backdrop-blur-sm sticky top-0 z-50">
-        <div className="mx-auto max-w-6xl px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-12">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-blue-400"></div>
-                <h1 className="text-xl font-bold tracking-tight text-white">InvoiceFlow</h1>
-              </div>
-              <div className="hidden md:flex gap-1">
-                <a href="/" className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors">Home</a>
-                <a href="/employees" className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors">Employees</a>
-                <a href="/timesheets" className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors">Timesheets</a>
-                <a href="/invoices" className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors">Invoices</a>
-                <a href="/analytics" className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors">Analytics</a>
+    <div className="min-h-screen text-[var(--text)]">
+      <nav className="sticky top-0 z-50 border-b border-[var(--line)] bg-[rgba(8,12,18,0.86)] backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1500px] items-center justify-between px-6 py-4 lg:px-10">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
+              <div className="h-3 w-3 rounded-full bg-[var(--accent)] shadow-[0_0_16px_rgba(47,125,255,0.9)]" />
+              <div>
+                <div className="text-xs uppercase tracking-[0.28em] text-[var(--muted)]">InvoiceFlow</div>
+                <div className="text-lg font-semibold text-white">Workbook Ops</div>
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors"
-            >
-              Logout
-            </button>
+            <div className="hidden items-center gap-2 md:flex">
+              {navItems.map((item) => {
+                const active = pathname === item.href;
+                return (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                      active
+                        ? "bg-[var(--accent-soft)] text-white ring-1 ring-[rgba(47,125,255,0.38)]"
+                        : "text-[var(--muted)] hover:bg-[rgba(255,255,255,0.04)] hover:text-white"
+                    }`}
+                  >
+                    {item.label}
+                  </a>
+                );
+              })}
+            </div>
           </div>
+          <button
+            onClick={handleLogout}
+            className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-sm font-medium text-[var(--text)] transition hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
+          >
+            Logout
+          </button>
         </div>
       </nav>
 
-      {/* Main Content */}
-      <div className="mx-auto max-w-6xl px-8 py-12">
+      <main className="mx-auto max-w-[1500px] px-6 py-8 lg:px-10">
         {children}
-      </div>
+      </main>
     </div>
   );
 }

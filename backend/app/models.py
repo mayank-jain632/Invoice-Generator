@@ -1,80 +1,119 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import relationship
 from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import relationship
+
 from .db import Base
+
 
 class Vendor(Base):
     __tablename__ = "vendors"
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
-    email = Column(String, nullable=False)
+    email = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    employees = relationship("Employee", back_populates="preferred_vendor")
+    pair_sheets = relationship("PairSheet", back_populates="vendor", cascade="all, delete-orphan")
 
-class CompanyPayment(Base):
-    __tablename__ = "company_payments"
+
+class Company(Base):
+    __tablename__ = "companies"
+
     id = Column(Integer, primary_key=True, index=True)
-    company = Column(String, nullable=False)
-    month_key = Column(String, nullable=False)
-    paid = Column(Boolean, default=False)
-    paid_at = Column(DateTime, nullable=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    address = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    __table_args__ = (UniqueConstraint("company", "month_key", name="uq_company_month_payment"),)
+    pair_sheets = relationship("PairSheet", back_populates="company", cascade="all, delete-orphan")
+
 
 class Employee(Base):
     __tablename__ = "employees"
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
-    hourly_rate = Column(Float, nullable=False)
+    hourly_rate = Column(Float, nullable=False, default=0.0)
     email = Column(String, nullable=True)
     start_date = Column(String, nullable=True)
-    company = Column(String, nullable=True)
-    preferred_vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=True)
-
-    lifetime_hours = Column(Float, default=0.0)
-    # hours tracked per month are in EmployeeMonth
-
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    preferred_vendor = relationship("Vendor", back_populates="employees")
-    months = relationship("EmployeeMonth", back_populates="employee", cascade="all, delete-orphan")
-    invoices = relationship("Invoice", back_populates="employee", cascade="all, delete-orphan")
+    sheet_rows = relationship("SheetRow", back_populates="employee")
 
-class EmployeeMonth(Base):
-    __tablename__ = "employee_months"
+
+class PairSheet(Base):
+    __tablename__ = "pair_sheets"
+
     id = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
-    month_key = Column(String, nullable=False)  # e.g. "2025-12"
+    vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=False)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-    hours = Column(Float, default=0.0)
+    vendor = relationship("Vendor", back_populates="pair_sheets")
+    company = relationship("Company", back_populates="pair_sheets")
+    rows = relationship("SheetRow", back_populates="pair_sheet", cascade="all, delete-orphan")
+    invoices = relationship("CombinedInvoice", back_populates="pair_sheet", cascade="all, delete-orphan")
+
+    __table_args__ = (UniqueConstraint("vendor_id", "company_id", name="uq_pair_sheet_vendor_company"),)
+
+
+class SheetRow(Base):
+    __tablename__ = "sheet_rows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pair_sheet_id = Column(Integer, ForeignKey("pair_sheets.id"), nullable=False)
+    month_key = Column(String, nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    role = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    hours = Column(Float, nullable=False, default=0.0)
+    rate = Column(Float, nullable=False, default=0.0)
+    comments = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
-    employee = relationship("Employee", back_populates="months")
+    pair_sheet = relationship("PairSheet", back_populates="rows")
+    employee = relationship("Employee", back_populates="sheet_rows")
 
-    __table_args__ = (UniqueConstraint("employee_id", "month_key", name="uq_employee_month"),)
 
-class Invoice(Base):
-    __tablename__ = "invoices"
+class CombinedInvoice(Base):
+    __tablename__ = "combined_invoices"
+
     id = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
-
+    pair_sheet_id = Column(Integer, ForeignKey("pair_sheets.id"), nullable=False)
     month_key = Column(String, nullable=False)
-    hours = Column(Float, nullable=False)
-    rate = Column(Float, nullable=False)
-    amount = Column(Float, nullable=False)
-
     invoice_number = Column(String, unique=True, nullable=False)
     pdf_path = Column(String, nullable=True)
-
-    approved = Column(Boolean, default=False)
+    total_amount = Column(Float, nullable=False, default=0.0)
     sent = Column(Boolean, default=False)
-
+    paid = Column(Boolean, default=False)
+    manual_recipients = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    sent_at = Column(DateTime, nullable=True)
+    paid_at = Column(DateTime, nullable=True)
 
-    employee = relationship("Employee", back_populates="invoices")
+    pair_sheet = relationship("PairSheet", back_populates="invoices")
+    lines = relationship("CombinedInvoiceLine", back_populates="invoice", cascade="all, delete-orphan")
 
-    __table_args__ = (
-        UniqueConstraint("employee_id", "month_key", name="uq_invoice_employee_month"),
-    )
+    __table_args__ = (UniqueConstraint("pair_sheet_id", "month_key", name="uq_combined_invoice_pair_month"),)
+
+
+class CombinedInvoiceLine(Base):
+    __tablename__ = "combined_invoice_lines"
+
+    id = Column(Integer, primary_key=True, index=True)
+    combined_invoice_id = Column(Integer, ForeignKey("combined_invoices.id"), nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    employee_name = Column(String, nullable=False)
+    role = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    hours = Column(Float, nullable=False, default=0.0)
+    rate = Column(Float, nullable=False, default=0.0)
+    amount = Column(Float, nullable=False, default=0.0)
+    comments = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+
+    invoice = relationship("CombinedInvoice", back_populates="lines")

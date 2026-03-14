@@ -1,51 +1,43 @@
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi.responses import FileResponse
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+import logging
+import os
+import sys
 from datetime import datetime
 from pathlib import Path
-import logging
-import sys
-import os
 
-from .db import Base, engine, get_db
-from . import models, schemas
-from .invoice_pdf import generate_invoice_pdf
-from .emailer import send_timesheet_reminder, send_email
-from .settings import settings
-from .auth import verify_token, verify_token_optional, create_access_token, verify_credentials
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, case
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-# Configure logging
+from . import models, schemas
+from .auth import create_access_token, verify_credentials, verify_token, verify_token_optional
+from .db import Base, engine, get_db
+from .emailer import send_email
+from .invoice_pdf import generate_combined_invoice_pdf
+from .settings import settings
+
+
 logging.basicConfig(
     level=logging.INFO if not settings.DEBUG else logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        # Only log to file if not on Vercel (Vercel uses /tmp which is ephemeral)
-    ] if not os.getenv("VERCEL") else [logging.StreamHandler(sys.stdout)]
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
 
-# Only create tables if not on Vercel (tables created once, not on each function invoke)
 if not os.getenv("VERCEL"):
     try:
         Base.metadata.create_all(bind=engine)
-    except Exception as e:
-        logger.warning(f"Could not create tables on startup: {e}")
+    except Exception as exc:
+        logger.warning("Could not create tables on startup: %s", exc)
 
 app = FastAPI(
-    title="Invoice Automation API",
+    title="InvoiceFlow Workbook API",
     debug=settings.DEBUG,
-    root_path="/api" if os.getenv("VERCEL") else ""
+    root_path="/api" if os.getenv("VERCEL") else "",
 )
 
-# CORS configuration - must be before other middleware
-allowed_origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(",")]
-logger.info(f"CORS enabled for origins: {allowed_origins}")
-
+allowed_origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -55,26 +47,221 @@ app.add_middleware(
     max_age=600,
 )
 
-# Use /tmp for serverless (Vercel), otherwise local directory
-import os
-if os.getenv("VERCEL"):
-    INVOICE_DIR = Path("/tmp/generated_invoices")
-else:
-    INVOICE_DIR = Path("./generated_invoices")
+INVOICE_DIR = Path("/tmp/generated_invoices") if os.getenv("VERCEL") else Path("./generated_invoices")
 
-def invoice_number_for(employee_id: int, month_key: str) -> str:
-    # simple deterministic-ish format; swap with your own numbering rules
+
+def invoice_number_for(sheet_id: int, month_key: str) -> str:
     ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    return f"INV-{month_key.replace('-', '')}-{employee_id}-{ts}"
+    return f"WB-{month_key.replace('-', '')}-{sheet_id}-{ts}"
+
+
+def parse_recipients(recipients: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    for entry in recipients:
+        for item in entry.split(","):
+            email = item.strip()
+            if email and email not in cleaned:
+                cleaned.append(email)
+    return cleaned
+
+
+def serialize_invoice(inv: models.CombinedInvoice) -> schemas.CombinedInvoiceOut:
+    return schemas.CombinedInvoiceOut(
+        id=inv.id,
+        pair_sheet_id=inv.pair_sheet_id,
+        month_key=inv.month_key,
+        invoice_number=inv.invoice_number,
+        total_amount=float(inv.total_amount or 0),
+        sent=bool(inv.sent),
+        paid=bool(inv.paid),
+        manual_recipients=inv.manual_recipients,
+        created_at=inv.created_at.isoformat() if inv.created_at else "",
+        sent_at=inv.sent_at.isoformat() if inv.sent_at else None,
+        paid_at=inv.paid_at.isoformat() if inv.paid_at else None,
+    )
+
+
+def get_pair_sheet_out(db: Session, pair_sheet: models.PairSheet, month_key: str | None) -> schemas.PairSheetOut:
+    rows_query = db.query(models.SheetRow).filter(models.SheetRow.pair_sheet_id == pair_sheet.id)
+    invoice = None
+    row_count = 0
+    month_total = 0.0
+    if month_key:
+        rows = rows_query.filter(models.SheetRow.month_key == month_key).all()
+        row_count = len(rows)
+        month_total = sum(float(row.hours or 0) * float(row.rate or 0) for row in rows)
+        invoice = (
+            db.query(models.CombinedInvoice)
+            .filter(models.CombinedInvoice.pair_sheet_id == pair_sheet.id, models.CombinedInvoice.month_key == month_key)
+            .first()
+        )
+
+    return schemas.PairSheetOut(
+        id=pair_sheet.id,
+        vendor_id=pair_sheet.vendor_id,
+        company_id=pair_sheet.company_id,
+        vendor_name=pair_sheet.vendor.name,
+        company_name=pair_sheet.company.name,
+        month_total=month_total,
+        row_count=row_count,
+        invoice_id=invoice.id if invoice else None,
+        invoice_sent=bool(invoice.sent) if invoice else False,
+        invoice_paid=bool(invoice.paid) if invoice else False,
+    )
+
+
+def serialize_row(row: models.SheetRow, invoice: models.CombinedInvoice | None) -> schemas.SheetRowOut:
+    amount = float(row.hours or 0) * float(row.rate or 0)
+    invoice_status = "sent" if invoice and invoice.sent else "draft"
+    paid_status = "paid" if invoice and invoice.paid else "open"
+    return schemas.SheetRowOut(
+        id=row.id,
+        employee_id=row.employee_id,
+        employee_name=row.employee.name,
+        role=row.role,
+        notes=row.notes,
+        hours=float(row.hours or 0),
+        rate=float(row.rate or 0),
+        amount=amount,
+        comments=row.comments,
+        sort_order=row.sort_order,
+        invoice_status=invoice_status,
+        paid_status=paid_status,
+    )
+
+
+def resolve_employee(db: Session, row_in: schemas.SheetRowIn) -> models.Employee:
+    employee = None
+    if row_in.employee_id:
+        employee = db.query(models.Employee).filter(models.Employee.id == row_in.employee_id).first()
+    elif row_in.employee_name:
+        employee = (
+            db.query(models.Employee)
+            .filter(models.Employee.name.ilike(row_in.employee_name.strip()))
+            .first()
+        )
+    if not employee:
+        raise HTTPException(status_code=400, detail=f"Unknown employee reference: {row_in.employee_name or row_in.employee_id}")
+    return employee
+
+
+def is_empty_row(row_in: schemas.SheetRowIn) -> bool:
+    return not any(
+        [
+            row_in.employee_id,
+            row_in.employee_name,
+            row_in.role,
+            row_in.notes,
+            row_in.comments,
+            float(row_in.hours or 0),
+            float(row_in.rate or 0),
+        ]
+    )
+
+
+def regenerate_invoice_pdf(db: Session, invoice: models.CombinedInvoice) -> Path:
+    pair_sheet = db.query(models.PairSheet).filter(models.PairSheet.id == invoice.pair_sheet_id).first()
+    if not pair_sheet:
+        raise HTTPException(status_code=404, detail="Pair sheet not found")
+
+    lines = [
+        {
+            "employee_name": line.employee_name,
+            "role": line.role,
+            "notes": line.notes,
+            "hours": float(line.hours or 0),
+            "rate": float(line.rate or 0),
+            "amount": float(line.amount or 0),
+            "comments": line.comments,
+        }
+        for line in sorted(invoice.lines, key=lambda item: item.sort_order)
+    ]
+    pdf_path = generate_combined_invoice_pdf(
+        out_dir=INVOICE_DIR,
+        invoice_number=invoice.invoice_number,
+        vendor_name=pair_sheet.vendor.name,
+        company_name=pair_sheet.company.name,
+        company_address=pair_sheet.company.address,
+        month_key=invoice.month_key,
+        lines=lines,
+        total_amount=float(invoice.total_amount or 0),
+    )
+    invoice.pdf_path = str(pdf_path)
+    invoice.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(invoice)
+    return pdf_path
+
+
+def build_invoice_from_sheet(db: Session, pair_sheet: models.PairSheet, month_key: str) -> models.CombinedInvoice:
+    rows = (
+        db.query(models.SheetRow)
+        .filter(models.SheetRow.pair_sheet_id == pair_sheet.id, models.SheetRow.month_key == month_key)
+        .order_by(models.SheetRow.sort_order.asc(), models.SheetRow.id.asc())
+        .all()
+    )
+    if not rows:
+        raise HTTPException(status_code=400, detail="This sheet has no rows for the selected month")
+
+    total_amount = sum(float(row.hours or 0) * float(row.rate or 0) for row in rows)
+    invoice = (
+        db.query(models.CombinedInvoice)
+        .filter(models.CombinedInvoice.pair_sheet_id == pair_sheet.id, models.CombinedInvoice.month_key == month_key)
+        .first()
+    )
+    if not invoice:
+        invoice = models.CombinedInvoice(
+            pair_sheet_id=pair_sheet.id,
+            month_key=month_key,
+            invoice_number=invoice_number_for(pair_sheet.id, month_key),
+            total_amount=total_amount,
+        )
+        db.add(invoice)
+        db.commit()
+        db.refresh(invoice)
+    else:
+        invoice.total_amount = total_amount
+        invoice.updated_at = datetime.utcnow()
+        for line in list(invoice.lines):
+            db.delete(line)
+        db.flush()
+
+    for idx, row in enumerate(rows):
+        amount = float(row.hours or 0) * float(row.rate or 0)
+        db.add(
+            models.CombinedInvoiceLine(
+                combined_invoice_id=invoice.id,
+                employee_id=row.employee_id,
+                employee_name=row.employee.name,
+                role=row.role,
+                notes=row.notes,
+                hours=row.hours,
+                rate=row.rate,
+                amount=amount,
+                comments=row.comments,
+                sort_order=idx,
+            )
+        )
+
+    db.commit()
+    db.refresh(invoice)
+    pdf_path = regenerate_invoice_pdf(db, invoice)
+    invoice.pdf_path = str(pdf_path)
+    invoice.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(invoice)
+    return invoice
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
 
 @app.get("/health")
 def health():
     return {"ok": True, "env": os.getenv("VERCEL", "local")}
 
-# --- Auth ---
-class LoginRequest(BaseModel):
-    username: str
-    password: str
 
 @app.post("/auth/login")
 def login(credentials: LoginRequest):
@@ -83,7 +270,12 @@ def login(credentials: LoginRequest):
         return {"access_token": access_token, "token_type": "bearer"}
     raise HTTPException(status_code=401, detail="Invalid username or password")
 
-# --- Employees ---
+
+@app.get("/vendors", response_model=list[schemas.VendorOut])
+def list_vendors(db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    return db.query(models.Vendor).order_by(models.Vendor.name.asc()).all()
+
+
 @app.post("/vendors", response_model=schemas.VendorOut)
 def create_vendor(payload: schemas.VendorCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     existing = db.query(models.Vendor).filter(models.Vendor.name == payload.name).first()
@@ -95,9 +287,6 @@ def create_vendor(payload: schemas.VendorCreate, db: Session = Depends(get_db), 
     db.refresh(vendor)
     return vendor
 
-@app.get("/vendors", response_model=list[schemas.VendorOut])
-def list_vendors(db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    return db.query(models.Vendor).order_by(models.Vendor.name.asc()).all()
 
 @app.put("/vendors/{vendor_id}", response_model=schemas.VendorOut)
 def update_vendor(vendor_id: int, payload: schemas.VendorCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
@@ -110,6 +299,7 @@ def update_vendor(vendor_id: int, payload: schemas.VendorCreate, db: Session = D
     db.refresh(vendor)
     return vendor
 
+
 @app.delete("/vendors/{vendor_id}")
 def delete_vendor(vendor_id: int, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     vendor = db.query(models.Vendor).filter(models.Vendor.id == vendor_id).first()
@@ -119,521 +309,408 @@ def delete_vendor(vendor_id: int, db: Session = Depends(get_db), username: str =
     db.commit()
     return {"deleted": vendor_id}
 
+
+@app.get("/companies", response_model=list[schemas.CompanyOut])
+def list_companies(db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    return db.query(models.Company).order_by(models.Company.name.asc()).all()
+
+
+@app.post("/companies", response_model=schemas.CompanyOut)
+def create_company(payload: schemas.CompanyCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    existing = db.query(models.Company).filter(models.Company.name == payload.name).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Company name already exists")
+    company = models.Company(name=payload.name, address=payload.address)
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    return company
+
+
+@app.put("/companies/{company_id}", response_model=schemas.CompanyOut)
+def update_company(company_id: int, payload: schemas.CompanyCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    company = db.query(models.Company).filter(models.Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    company.name = payload.name
+    company.address = payload.address
+    db.commit()
+    db.refresh(company)
+    return company
+
+
+@app.delete("/companies/{company_id}")
+def delete_company(company_id: int, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    company = db.query(models.Company).filter(models.Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    db.delete(company)
+    db.commit()
+    return {"deleted": company_id}
+
+
+@app.get("/employees", response_model=list[schemas.EmployeeOut])
+def list_employees(db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    return db.query(models.Employee).order_by(models.Employee.name.asc()).all()
+
+
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     existing = db.query(models.Employee).filter(models.Employee.name == payload.name).first()
     if existing:
         raise HTTPException(status_code=409, detail="Employee name already exists")
-    emp = models.Employee(
+    employee = models.Employee(
         name=payload.name,
         hourly_rate=payload.hourly_rate,
         email=payload.email,
         start_date=payload.start_date,
-        company=payload.company,
-        preferred_vendor_id=payload.preferred_vendor_id,
+        notes=payload.notes,
     )
-    db.add(emp)
+    db.add(employee)
     db.commit()
-    db.refresh(emp)
-    logger.info(f"Created employee: {emp.name} (ID: {emp.id})")
-    return emp
+    db.refresh(employee)
+    return employee
 
-@app.get("/employees", response_model=list[schemas.EmployeeOut])
-def list_employees(
-    month_key: str | None = None,
-    active_only: bool = False,
-    db: Session = Depends(get_db),
-    username: str = Depends(verify_token),
-):
-    try:
-        query = db.query(models.Employee)
-        if active_only:
-            if not month_key:
-                raise HTTPException(status_code=400, detail="month_key is required when active_only=true")
-            query = (
-                query.join(models.EmployeeMonth, models.EmployeeMonth.employee_id == models.Employee.id)
-                .filter(models.EmployeeMonth.month_key == month_key, models.EmployeeMonth.hours > 0)
-            )
-        employees = query.order_by(models.Employee.name.asc()).all()
-        logger.info(f"Retrieved {len(employees)} employees")
-        return employees
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching employees: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-@app.put("/employees/{employee_id}")
+@app.put("/employees/{employee_id}", response_model=schemas.EmployeeOut)
 def update_employee(employee_id: int, payload: schemas.EmployeeCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    emp = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
-    if not emp:
+    employee = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
+    if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
-    emp.name = payload.name
-    emp.hourly_rate = payload.hourly_rate
-    emp.email = payload.email
-    emp.start_date = payload.start_date
-    emp.company = payload.company
-    emp.preferred_vendor_id = payload.preferred_vendor_id
+    employee.name = payload.name
+    employee.hourly_rate = payload.hourly_rate
+    employee.email = payload.email
+    employee.start_date = payload.start_date
+    employee.notes = payload.notes
     db.commit()
-    db.refresh(emp)
-    return emp
+    db.refresh(employee)
+    return employee
+
 
 @app.delete("/employees/{employee_id}")
 def delete_employee(employee_id: int, db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    emp = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
-    if not emp:
+    employee = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
+    if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
-    db.delete(emp)
+    db.delete(employee)
     db.commit()
     return {"deleted": employee_id}
 
-@app.get("/employees/{employee_id}/monthly_hours/{month_key}")
-def get_monthly_hours(employee_id: int, month_key: str, db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    month = (
-        db.query(models.EmployeeMonth)
-        .filter(models.EmployeeMonth.employee_id == employee_id, models.EmployeeMonth.month_key == month_key)
+
+@app.get("/workbook/sheets", response_model=list[schemas.PairSheetOut])
+def list_pair_sheets(
+    month_key: str | None = None,
+    vendor_id: int | None = None,
+    company_id: int | None = None,
+    db: Session = Depends(get_db),
+    username: str = Depends(verify_token),
+):
+    query = db.query(models.PairSheet)
+    if vendor_id:
+        query = query.filter(models.PairSheet.vendor_id == vendor_id)
+    if company_id:
+        query = query.filter(models.PairSheet.company_id == company_id)
+    sheets = query.order_by(models.PairSheet.id.asc()).all()
+    return [get_pair_sheet_out(db, sheet, month_key) for sheet in sheets]
+
+
+@app.post("/workbook/sheets", response_model=schemas.PairSheetOut)
+def create_pair_sheet(payload: schemas.PairSheetCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    existing = (
+        db.query(models.PairSheet)
+        .filter(models.PairSheet.vendor_id == payload.vendor_id, models.PairSheet.company_id == payload.company_id)
         .first()
     )
-    return {"employee_id": employee_id, "month_key": month_key, "hours": month.hours if month else 0.0}
-
-# --- Reminders ---
-@app.post("/reminders/send")
-def send_reminder(month_key: str):
-    if not settings.REMINDER_TO_EMAIL:
-        raise HTTPException(status_code=400, detail="REMINDER_TO_EMAIL not configured")
-    send_timesheet_reminder(month_key)
-    return {"sent": True, "month_key": month_key}
-
-@app.post("/reminders/monthly-vendor")
-def send_monthly_vendor_reminder(token: str | None = None, db: Session = Depends(get_db)):
-    if settings.CRON_SECRET:
-        if not token or token != settings.CRON_SECRET:
-            raise HTTPException(status_code=401, detail="Unauthorized")
-
-    from datetime import date
-
-    today = date.today()
-    year = today.year
-    month = today.month - 1
-    if month == 0:
-        month = 12
-        year -= 1
-    month_key = f"{year}-{month:02d}"
-
-    vendors = db.query(models.Vendor).all()
-    bcc_emails = [v.email for v in vendors if v.email]
-    if not bcc_emails:
-        raise HTTPException(status_code=400, detail="No vendor emails configured")
-
-    to_email = settings.FROM_EMAIL or settings.SMTP_USER
-    if not to_email:
-        raise HTTPException(status_code=400, detail="FROM_EMAIL or SMTP_USER not configured")
-
-    subject = f"Invoice request — {month_key}"
-    body = f"Hi,\n\nPlease send the invoice for {month_key}.\n\nThank you."
-    send_email(subject, body, to_email, bcc_emails=bcc_emails)
-    return {"sent": True, "month_key": month_key, "bcc_count": len(bcc_emails)}
-
-# --- Timesheet ingestion ---
-@app.post("/timesheets/ingest")
-def ingest_timesheet(payload: schemas.TimesheetIn, db: Session = Depends(get_db)):
-    # payload.rows: [{name, hours}]
-    updated = []
-    for row in payload.rows:
-        emp = db.query(models.Employee).filter(models.Employee.name == row.name).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail=f"Unknown employee: {row.name}")
-
-        # update month hours
-        month = (
-            db.query(models.EmployeeMonth)
-            .filter(models.EmployeeMonth.employee_id == emp.id, models.EmployeeMonth.month_key == payload.month_key)
-            .first()
-        )
-        if not month:
-            month = models.EmployeeMonth(employee_id=emp.id, month_key=payload.month_key, hours=0.0)
-            db.add(month)
-
-        # add new hours
-        month.hours = float(month.hours) + float(row.hours)
-        month.updated_at = datetime.utcnow()
-
-        # update lifetime
-        emp.lifetime_hours = float(emp.lifetime_hours) + float(row.hours)
-
-        updated.append({"employee": emp.name, "added_hours": row.hours, "month_total": month.hours})
-
+    if existing:
+        return get_pair_sheet_out(db, existing, None)
+    sheet = models.PairSheet(vendor_id=payload.vendor_id, company_id=payload.company_id)
+    db.add(sheet)
     db.commit()
-    return {"month_key": payload.month_key, "updated": updated}
+    db.refresh(sheet)
+    return get_pair_sheet_out(db, sheet, None)
 
-# --- Invoice generation ---
-@app.post("/invoices/generate", response_model=list[schemas.InvoiceOut])
-def generate_invoices(payload: schemas.InvoiceCreateIn, db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    invoices_out = []
-    for emp_id in payload.employee_ids:
-        emp = db.query(models.Employee).filter(models.Employee.id == emp_id).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail=f"Employee id not found: {emp_id}")
 
-        # prevent duplicate invoices for same employee/month
-        existing = (
-            db.query(models.Invoice)
-            .filter(models.Invoice.employee_id == emp_id, models.Invoice.month_key == payload.month_key)
-            .first()
-        )
-        if existing:
-            pdf_path = generate_invoice_pdf(
-                out_dir=INVOICE_DIR,
-                invoice_number=existing.invoice_number,
-                employee_name=emp.name,
-                employee_company=emp.company,
-                employee_start_date=emp.start_date,
-                employee_email=emp.email,
-                employee_preferred_vendor=emp.preferred_vendor.name if emp.preferred_vendor else None,
-                month_key=payload.month_key,
-                hours=float(existing.hours),
-                rate=float(existing.rate),
-                amount=float(existing.amount),
-            )
-            existing.pdf_path = str(pdf_path)
-            db.commit()
-            db.refresh(existing)
-            invoices_out.append(existing)
-            continue
-
-        month = (
-            db.query(models.EmployeeMonth)
-            .filter(models.EmployeeMonth.employee_id == emp_id, models.EmployeeMonth.month_key == payload.month_key)
-            .first()
-        )
-        if not month or month.hours <= 0:
-            raise HTTPException(status_code=400, detail=f"No hours for {emp.name} in {payload.month_key}")
-
-        inv_no = invoice_number_for(emp_id, payload.month_key)
-        hours = float(month.hours)
-        rate = float(emp.hourly_rate)
-        amount = hours * rate
-
-        pdf_path = generate_invoice_pdf(
-            out_dir=INVOICE_DIR,
-            invoice_number=inv_no,
-            employee_name=emp.name,
-            employee_company=emp.company,
-            employee_start_date=emp.start_date,
-            employee_email=emp.email,
-            employee_preferred_vendor=emp.preferred_vendor.name if emp.preferred_vendor else None,
-            month_key=payload.month_key,
-            hours=hours,
-            rate=rate,
-            amount=amount,
-        )
-
-        inv = models.Invoice(
-            employee_id=emp_id,
-            month_key=payload.month_key,
-            hours=hours,
-            rate=rate,
-            amount=amount,
-            invoice_number=inv_no,
-            pdf_path=str(pdf_path),
-            approved=False,
-            sent=False,
-        )
-        db.add(inv)
-        try:
-            db.commit()
-            db.refresh(inv)
-            invoices_out.append(inv)
-        except IntegrityError:
-            db.rollback()
-            existing = (
-                db.query(models.Invoice)
-                .filter(models.Invoice.employee_id == emp_id, models.Invoice.month_key == payload.month_key)
-                .first()
-            )
-            if existing:
-                invoices_out.append(existing)
-            else:
-                raise HTTPException(status_code=500, detail="Could not create or fetch invoice")
-
-    return invoices_out
-
-@app.get("/invoices", response_model=list[schemas.InvoiceOut])
-def list_invoices(db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    return db.query(models.Invoice).order_by(models.Invoice.created_at.desc()).all()
-
-@app.get("/invoices/{invoice_id}/pdf")
-def get_invoice_pdf(
-    invoice_id: int,
+@app.get("/workbook/sheets/{sheet_id}", response_model=schemas.WorkbookSheetDetailOut)
+def get_pair_sheet(
+    sheet_id: int,
+    month_key: str,
     db: Session = Depends(get_db),
-    username: str = Depends(verify_token_optional),
+    username: str = Depends(verify_token),
 ):
-    inv = db.query(models.Invoice).filter(models.Invoice.id == invoice_id).first()
-    if not inv:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    pdf = Path(inv.pdf_path) if inv.pdf_path else None
-    if not pdf or not pdf.exists():
-        emp = db.query(models.Employee).filter(models.Employee.id == inv.employee_id).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found for invoice")
-        pdf_path = generate_invoice_pdf(
-            out_dir=INVOICE_DIR,
-            invoice_number=inv.invoice_number,
-            employee_name=emp.name,
-            employee_company=emp.company,
-            employee_start_date=emp.start_date,
-            employee_email=emp.email,
-            employee_preferred_vendor=emp.preferred_vendor.name if emp.preferred_vendor else None,
-            month_key=inv.month_key,
-            hours=float(inv.hours),
-            rate=float(inv.rate),
-            amount=float(inv.amount),
-        )
-        inv.pdf_path = str(pdf_path)
-        db.commit()
-        db.refresh(inv)
-        pdf = Path(inv.pdf_path)
-    return FileResponse(path=pdf, media_type="application/pdf", filename=pdf.name)
-
-@app.get("/invoices/download_all")
-def download_all_invoices(
-    token: str | None = None,
-    invoice_ids: str | None = None,
-    db: Session = Depends(get_db),
-    username: str = Depends(verify_token_optional),
-):
-    query = db.query(models.Invoice)
-    if invoice_ids:
-        try:
-            ids = [int(v.strip()) for v in invoice_ids.split(",") if v.strip()]
-        except ValueError:
-            raise HTTPException(status_code=400, detail="invoice_ids must be a comma-separated list of integers")
-        if not ids:
-            raise HTTPException(status_code=400, detail="No valid invoice_ids provided")
-        query = query.filter(models.Invoice.id.in_(ids))
-
-    invoices = query.order_by(models.Invoice.created_at.desc()).all()
-    if not invoices:
-        raise HTTPException(status_code=404, detail="No invoices available")
-
-    INVOICE_DIR.mkdir(parents=True, exist_ok=True)
-    zip_path = INVOICE_DIR / f"invoices_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.zip"
-
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for inv in invoices:
-            pdf = Path(inv.pdf_path) if inv.pdf_path else None
-            if not pdf or not pdf.exists():
-                emp = db.query(models.Employee).filter(models.Employee.id == inv.employee_id).first()
-                if not emp:
-                    continue
-                pdf_path = generate_invoice_pdf(
-                    out_dir=INVOICE_DIR,
-                    invoice_number=inv.invoice_number,
-                    employee_name=emp.name,
-                    employee_company=emp.company,
-                    employee_start_date=emp.start_date,
-                    employee_email=emp.email,
-                    employee_preferred_vendor=emp.preferred_vendor.name if emp.preferred_vendor else None,
-                    month_key=inv.month_key,
-                    hours=float(inv.hours),
-                    rate=float(inv.rate),
-                    amount=float(inv.amount),
-                )
-                inv.pdf_path = str(pdf_path)
-                db.commit()
-                db.refresh(inv)
-                pdf = Path(inv.pdf_path)
-            if pdf and pdf.exists():
-                zipf.write(pdf, arcname=pdf.name)
-
-    return FileResponse(path=zip_path, media_type="application/zip", filename=zip_path.name)
-
-@app.post("/invoices/regenerate_pdfs")
-def regenerate_pdfs(db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    regenerated = 0
-    missing = 0
-    for inv in db.query(models.Invoice).all():
-        target = Path(inv.pdf_path) if inv.pdf_path else None
-        if not target or not target.exists():
-            missing += 1
-            pdf_path = generate_invoice_pdf(
-                out_dir=INVOICE_DIR,
-                invoice_number=inv.invoice_number,
-                employee_name=inv.employee.name if inv.employee else "Employee",
-                employee_company=inv.employee.company if inv.employee else None,
-                employee_start_date=inv.employee.start_date if inv.employee else None,
-                employee_email=inv.employee.email if inv.employee else None,
-                employee_preferred_vendor=inv.employee.preferred_vendor.name if inv.employee and inv.employee.preferred_vendor else None,
-                month_key=inv.month_key,
-                hours=float(inv.hours),
-                rate=float(inv.rate),
-                amount=float(inv.amount),
-            )
-            inv.pdf_path = str(pdf_path)
-            regenerated += 1
-    db.commit()
-    return {"regenerated": regenerated, "missing_before": missing, "total": db.query(models.Invoice).count()}
-
-@app.post("/invoices/approve")
-def approve_invoices(payload: schemas.ApproveIn, db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    found = 0
-    for inv_id in payload.invoice_ids:
-        inv = db.query(models.Invoice).filter(models.Invoice.id == inv_id).first()
-        if not inv:
-            continue
-        inv.approved = True
-        found += 1
-    db.commit()
-    return {"approved_count": found}
-
-@app.post("/invoices/send")
-def send_invoices(payload: schemas.SendIn, db: Session = Depends(get_db)):
-    pending_by_vendor: dict[int, dict[str, object]] = {}
-    for inv_id in payload.invoice_ids:
-        inv = db.query(models.Invoice).filter(models.Invoice.id == inv_id).first()
-        if not inv:
-            continue
-        if inv.sent:
-            pass
-
-        pdf = Path(inv.pdf_path) if inv.pdf_path else None
-        if not pdf or not pdf.exists():
-            emp = db.query(models.Employee).filter(models.Employee.id == inv.employee_id).first()
-            if not emp:
-                raise HTTPException(status_code=404, detail=f"Employee not found for invoice {inv.invoice_number}")
-            pdf_path = generate_invoice_pdf(
-                out_dir=INVOICE_DIR,
-                invoice_number=inv.invoice_number,
-                employee_name=emp.name,
-                employee_company=emp.company,
-                employee_start_date=emp.start_date,
-                employee_email=emp.email,
-                employee_preferred_vendor=emp.preferred_vendor.name if emp.preferred_vendor else None,
-                month_key=inv.month_key,
-                hours=float(inv.hours),
-                rate=float(inv.rate),
-                amount=float(inv.amount),
-            )
-            inv.pdf_path = str(pdf_path)
-            pdf = Path(inv.pdf_path)
-
-        emp = db.query(models.Employee).filter(models.Employee.id == inv.employee_id).first()
-        vendor = emp.preferred_vendor if emp else None
-        if not vendor or not vendor.email:
-            raise HTTPException(status_code=400, detail=f"No vendor emails for invoice {inv.invoice_number}")
-
-        vendor_emails = [e.strip() for e in vendor.email.split(",") if e.strip()]
-        if not vendor_emails:
-            raise HTTPException(status_code=400, detail=f"No vendor emails for invoice {inv.invoice_number}")
-
-        bucket = pending_by_vendor.setdefault(vendor.id, {"vendor": vendor, "attachments": [], "month_keys": set()})
-        bucket["attachments"].append(pdf)
-        bucket["month_keys"].add(inv.month_key)
-
-        inv.sent = True
-
-    if not pending_by_vendor:
-        return {"sent_count": 0}
-
-    for bucket in pending_by_vendor.values():
-        vendor = bucket["vendor"]
-        month_list = ", ".join(sorted(bucket["month_keys"]))
-        subject = f"Invoices — {month_list}"
-        body = (
-            "Hi all,\n\n"
-            f"Please find attached the invoices for {month_list}.\n\n"
-            f"Thanks,\n{settings.COMPANY_NAME}"
-        )
-        recipients = [e.strip() for e in vendor.email.split(",") if e.strip()]
-        send_email(subject, body, recipients, attachments=bucket["attachments"])
-
-    db.commit()
-    total_sent = sum(len(bucket["attachments"]) for bucket in pending_by_vendor.values())
-    return {"sent_count": total_sent}
-
-# --- Analytics ---
-@app.get("/analytics/company_totals", response_model=list[schemas.CompanyTotalsOut])
-def company_totals(month_key: str | None = None, db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    def normalize_company(name: str) -> str:
-        key = (name or "").strip().lower()
-        if "swift bot" in key or "swiftbot" in key:
-            return "Swift Bot Technologies"
-        return name or "Unassigned"
-
-    if not month_key:
-        month_key = (
-            db.query(func.max(models.Invoice.month_key))
-            .filter(models.Invoice.sent.is_(True))
-            .scalar()
-        )
-        if not month_key:
-            return []
-    company_expr = case(
-        (
-            func.lower(func.coalesce(models.Employee.company, "")).like("%swift bot%"),
-            "Swift Bot Technologies",
-        ),
-        (
-            func.lower(func.coalesce(models.Employee.company, "")).like("%swiftbot%"),
-            "Swift Bot Technologies",
-        ),
-        else_=func.coalesce(models.Employee.company, "Unassigned"),
+    sheet = db.query(models.PairSheet).filter(models.PairSheet.id == sheet_id).first()
+    if not sheet:
+        raise HTTPException(status_code=404, detail="Sheet not found")
+    invoice = (
+        db.query(models.CombinedInvoice)
+        .filter(models.CombinedInvoice.pair_sheet_id == sheet_id, models.CombinedInvoice.month_key == month_key)
+        .first()
     )
     rows = (
-        db.query(company_expr.label("company"), func.sum(models.Invoice.amount).label("total_amount"))
-        .join(models.Invoice, models.Invoice.employee_id == models.Employee.id)
-        .filter(models.Invoice.month_key == month_key, models.Invoice.sent.is_(True))
-        .group_by(company_expr)
-        .order_by(company_expr.asc())
+        db.query(models.SheetRow)
+        .filter(models.SheetRow.pair_sheet_id == sheet_id, models.SheetRow.month_key == month_key)
+        .order_by(models.SheetRow.sort_order.asc(), models.SheetRow.id.asc())
         .all()
     )
+    return schemas.WorkbookSheetDetailOut(
+        sheet=get_pair_sheet_out(db, sheet, month_key),
+        month_key=month_key,
+        rows=[serialize_row(row, invoice) for row in rows],
+        invoice=serialize_invoice(invoice) if invoice else None,
+    )
 
-    totals = []
-    for company, total in rows:
-        normalized_company = normalize_company(company)
-        payment = (
-            db.query(models.CompanyPayment)
-            .filter(models.CompanyPayment.company == normalized_company, models.CompanyPayment.month_key == month_key)
-            .first()
-        )
-        totals.append({
-            "company": normalized_company,
-            "month_key": month_key,
-            "total_amount": float(total or 0),
-            "paid": bool(payment.paid) if payment else False,
-        })
-    return totals
 
-@app.post("/analytics/company_totals/mark_paid")
-def mark_company_paid(payload: schemas.CompanyTotalsIn, db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    def normalize_company(name: str) -> str:
-        key = (name or "").strip().lower()
-        if "swift bot" in key or "swiftbot" in key:
-            return "Swift Bot Technologies"
-        return name or "Unassigned"
+@app.put("/workbook/sheets/{sheet_id}", response_model=schemas.WorkbookSheetDetailOut)
+def save_pair_sheet(
+    sheet_id: int,
+    month_key: str,
+    payload: schemas.WorkbookSheetSaveIn,
+    db: Session = Depends(get_db),
+    username: str = Depends(verify_token),
+):
+    sheet = db.query(models.PairSheet).filter(models.PairSheet.id == sheet_id).first()
+    if not sheet:
+        raise HTTPException(status_code=404, detail="Sheet not found")
 
-    company = normalize_company(payload.company)
-    record = (
-        db.query(models.CompanyPayment)
-        .filter(models.CompanyPayment.company == company, models.CompanyPayment.month_key == payload.month_key)
+    existing_rows = (
+        db.query(models.SheetRow)
+        .filter(models.SheetRow.pair_sheet_id == sheet_id, models.SheetRow.month_key == month_key)
+        .all()
+    )
+    existing_map = {row.id: row for row in existing_rows}
+    keep_ids: set[int] = set()
+    now = datetime.utcnow()
+
+    for idx, row_in in enumerate(payload.rows):
+        if is_empty_row(row_in):
+            continue
+        employee = resolve_employee(db, row_in)
+        row = existing_map.get(row_in.id) if row_in.id else None
+        if not row:
+            row = models.SheetRow(pair_sheet_id=sheet_id, month_key=month_key, created_at=now)
+            db.add(row)
+        row.employee_id = employee.id
+        row.role = row_in.role
+        row.notes = row_in.notes
+        row.hours = float(row_in.hours or 0)
+        row.rate = float(row_in.rate or employee.hourly_rate or 0)
+        row.comments = row_in.comments
+        row.sort_order = idx
+        row.updated_at = now
+        db.flush()
+        keep_ids.add(row.id)
+
+    for row in existing_rows:
+        if row.id not in keep_ids:
+            db.delete(row)
+
+    db.flush()
+
+    invoice = (
+        db.query(models.CombinedInvoice)
+        .filter(models.CombinedInvoice.pair_sheet_id == sheet_id, models.CombinedInvoice.month_key == month_key)
         .first()
     )
-    if not record:
-        record = models.CompanyPayment(company=company, month_key=payload.month_key, paid=False)
-        db.add(record)
-    record.paid = payload.paid
-    record.paid_at = datetime.utcnow() if payload.paid else None
+    if invoice:
+        remaining_total = sum(
+            float(row.hours or 0) * float(row.rate or 0)
+            for row in db.query(models.SheetRow)
+            .filter(models.SheetRow.pair_sheet_id == sheet_id, models.SheetRow.month_key == month_key)
+            .all()
+        )
+        invoice.sent = False
+        invoice.paid = False
+        invoice.manual_recipients = None
+        invoice.sent_at = None
+        invoice.paid_at = None
+        invoice.total_amount = remaining_total
+        invoice.pdf_path = None
+        invoice.updated_at = now
+        for line in list(invoice.lines):
+            db.delete(line)
+
     db.commit()
-    return {"company": company, "month_key": payload.month_key, "paid": record.paid}
+    return get_pair_sheet(sheet_id=sheet_id, month_key=month_key, db=db, username=username)
+
+
+@app.post("/workbook/sheets/{sheet_id}/invoice/generate", response_model=schemas.CombinedInvoiceOut)
+def generate_sheet_invoice(
+    sheet_id: int,
+    month_key: str,
+    db: Session = Depends(get_db),
+    username: str = Depends(verify_token),
+):
+    sheet = db.query(models.PairSheet).filter(models.PairSheet.id == sheet_id).first()
+    if not sheet:
+        raise HTTPException(status_code=404, detail="Sheet not found")
+    invoice = build_invoice_from_sheet(db, sheet, month_key)
+    return serialize_invoice(invoice)
+
+
+@app.post("/combined-invoices/{invoice_id}/send", response_model=schemas.CombinedInvoiceOut)
+def send_combined_invoice(
+    invoice_id: int,
+    payload: schemas.CombinedInvoiceSendIn,
+    db: Session = Depends(get_db),
+    username: str = Depends(verify_token),
+):
+    invoice = db.query(models.CombinedInvoice).filter(models.CombinedInvoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    recipients = parse_recipients(payload.recipients)
+    if not recipients:
+        raise HTTPException(status_code=400, detail="At least one recipient is required")
+
+    pdf = Path(invoice.pdf_path) if invoice.pdf_path else None
+    if not pdf or not pdf.exists():
+        pdf = regenerate_invoice_pdf(db, invoice)
+
+    pair_sheet = db.query(models.PairSheet).filter(models.PairSheet.id == invoice.pair_sheet_id).first()
+    if not pair_sheet:
+        raise HTTPException(status_code=404, detail="Sheet not found")
+
+    subject = f"Invoices — {invoice.month_key}"
+    body = (
+        "Hi all,\n\n"
+        f"Please find attached the invoices for {invoice.month_key}.\n\n"
+        f"Thanks,\n{pair_sheet.company.name}"
+    )
+    send_email(subject, body, recipients, attachments=[pdf])
+
+    invoice.sent = True
+    invoice.manual_recipients = ", ".join(recipients)
+    invoice.sent_at = datetime.utcnow()
+    invoice.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(invoice)
+    return serialize_invoice(invoice)
+
+
+@app.post("/combined-invoices/{invoice_id}/paid", response_model=schemas.CombinedInvoiceOut)
+def toggle_invoice_paid(
+    invoice_id: int,
+    payload: schemas.PaidToggleIn,
+    db: Session = Depends(get_db),
+    username: str = Depends(verify_token),
+):
+    invoice = db.query(models.CombinedInvoice).filter(models.CombinedInvoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    invoice.paid = payload.paid
+    invoice.paid_at = datetime.utcnow() if payload.paid else None
+    invoice.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(invoice)
+    return serialize_invoice(invoice)
+
+
+@app.get("/combined-invoices/{invoice_id}/pdf")
+def get_combined_invoice_pdf(
+    invoice_id: int,
+    token: str | None = None,
+    db: Session = Depends(get_db),
+    username: str = Depends(verify_token_optional),
+):
+    invoice = db.query(models.CombinedInvoice).filter(models.CombinedInvoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    pdf = Path(invoice.pdf_path) if invoice.pdf_path else None
+    if not pdf or not pdf.exists():
+        pdf = regenerate_invoice_pdf(db, invoice)
+    return FileResponse(path=pdf, media_type="application/pdf", filename=pdf.name)
+
+
+@app.get("/analytics/summary", response_model=list[schemas.SummaryCardOut])
+def analytics_summary(month_key: str | None = None, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    query = db.query(models.CombinedInvoice)
+    if month_key:
+        query = query.filter(models.CombinedInvoice.month_key == month_key)
+    invoices = query.all()
+    total_billed = sum(float(inv.total_amount or 0) for inv in invoices)
+    total_paid = sum(float(inv.total_amount or 0) for inv in invoices if inv.paid)
+    total_sent = sum(float(inv.total_amount or 0) for inv in invoices if inv.sent)
+    return [
+        schemas.SummaryCardOut(label="Billed", value=total_billed),
+        schemas.SummaryCardOut(label="Sent", value=total_sent),
+        schemas.SummaryCardOut(label="Paid", value=total_paid),
+        schemas.SummaryCardOut(label="Outstanding", value=total_billed - total_paid),
+    ]
+
+
+@app.get("/analytics/company-balances", response_model=list[schemas.CompanyBalanceOut])
+def company_balances(month_key: str | None = None, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    query = db.query(models.CombinedInvoice)
+    if month_key:
+        query = query.filter(models.CombinedInvoice.month_key == month_key)
+    invoices = query.all()
+    grouped: dict[str, schemas.CompanyBalanceOut] = {}
+    for invoice in invoices:
+        pair_sheet = invoice.pair_sheet
+        company_name = pair_sheet.company.name
+        current = grouped.get(company_name)
+        amount = float(invoice.total_amount or 0)
+        if not current:
+            current = schemas.CompanyBalanceOut(
+                company=company_name,
+                total_amount=0.0,
+                paid_amount=0.0,
+                outstanding_amount=0.0,
+            )
+            grouped[company_name] = current
+        current.total_amount += amount
+        if invoice.paid:
+            current.paid_amount += amount
+        current.outstanding_amount = current.total_amount - current.paid_amount
+    return list(sorted(grouped.values(), key=lambda item: item.company.lower()))
+
+
+@app.get("/analytics/vendor-balances", response_model=list[schemas.VendorBalanceOut])
+def vendor_balances(month_key: str | None = None, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    query = db.query(models.CombinedInvoice)
+    if month_key:
+        query = query.filter(models.CombinedInvoice.month_key == month_key)
+    invoices = query.all()
+    grouped: dict[str, schemas.VendorBalanceOut] = {}
+    for invoice in invoices:
+        vendor_name = invoice.pair_sheet.vendor.name
+        current = grouped.get(vendor_name)
+        amount = float(invoice.total_amount or 0)
+        if not current:
+            current = schemas.VendorBalanceOut(vendor=vendor_name, total_amount=0.0, sent_count=0)
+            grouped[vendor_name] = current
+        current.total_amount += amount
+        if invoice.sent:
+            current.sent_count += 1
+    return list(sorted(grouped.values(), key=lambda item: item.vendor.lower()))
+
+
+@app.get("/analytics/pair-balances", response_model=list[schemas.PairBalanceOut])
+def pair_balances(month_key: str | None = None, db: Session = Depends(get_db), username: str = Depends(verify_token)):
+    query = db.query(models.CombinedInvoice)
+    if month_key:
+        query = query.filter(models.CombinedInvoice.month_key == month_key)
+    invoices = query.order_by(models.CombinedInvoice.month_key.desc(), models.CombinedInvoice.created_at.desc()).all()
+    return [
+        schemas.PairBalanceOut(
+            invoice_id=invoice.id,
+            pair_sheet_id=invoice.pair_sheet_id,
+            vendor_name=invoice.pair_sheet.vendor.name,
+            company_name=invoice.pair_sheet.company.name,
+            month_key=invoice.month_key,
+            total_amount=float(invoice.total_amount or 0),
+            sent=bool(invoice.sent),
+            paid=bool(invoice.paid),
+        )
+        for invoice in invoices
+    ]
+
 
 @app.get("/analytics/earnings", response_model=list[schemas.EarningsPoint])
 def earnings(db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    rows = (
-        db.query(models.Invoice.month_key, func.sum(models.Invoice.amount).label("total_amount"))
-        .filter(models.Invoice.sent.is_(True))
-        .group_by(models.Invoice.month_key)
-        .order_by(models.Invoice.month_key.asc())
-        .all()
-    )
-    return [{"month_key": month_key, "total_amount": float(total or 0)} for month_key, total in rows]
-import zipfile
+    invoices = db.query(models.CombinedInvoice).all()
+    grouped: dict[str, float] = {}
+    for invoice in invoices:
+        grouped[invoice.month_key] = grouped.get(invoice.month_key, 0.0) + float(invoice.total_amount or 0)
+    return [
+        schemas.EarningsPoint(month_key=month_key, total_amount=grouped[month_key])
+        for month_key in sorted(grouped.keys())
+    ]

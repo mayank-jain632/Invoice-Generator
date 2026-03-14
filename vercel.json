@@ -22,11 +22,5 @@
       "src": "/(.*)",
       "dest": "frontend/$1"
     }
-  ],
-  "crons": [
-    {
-      "path": "/api/reminders/monthly-vendor",
-      "schedule": "0 9 5 * *"
-    }
   ]
 }

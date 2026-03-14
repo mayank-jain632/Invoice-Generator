@@ -5,7 +5,7 @@ import { Toaster } from 'react-hot-toast'
 
 export const metadata: Metadata = {
   title: 'InvoiceFlow',
-  description: 'Automate your contractor invoicing',
+  description: 'Spreadsheet-first contractor invoicing workspace',
 }
 
 export default function RootLayout({
@@ -15,27 +15,27 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="bg-slate-950 text-slate-100">
+      <body className="bg-[var(--bg-0)] text-[var(--text)]">
         <AuthGuard>{children}</AuthGuard>
         <Toaster 
           position="top-right"
           toastOptions={{
             duration: 4000,
             style: {
-              background: '#1e293b',
-              color: '#f1f5f9',
-              border: '1px solid #334155'
+              background: '#141c27',
+              color: '#e8edf5',
+              border: '1px solid #3d4d60'
             },
             success: {
               iconTheme: {
-                primary: '#10b981',
-                secondary: '#f1f5f9',
+                primary: '#2f7dff',
+                secondary: '#e8edf5',
               },
             },
             error: {
               iconTheme: {
                 primary: '#ef4444',
-                secondary: '#f1f5f9',
+                secondary: '#e8edf5',
               },
             },
           }}

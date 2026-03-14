@@ -1,104 +1,118 @@
-from reportlab.lib.pagesizes import LETTER
-from reportlab.lib import colors
-from reportlab.pdfgen import canvas
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import LETTER
+from reportlab.pdfgen import canvas
+
 from .settings import settings
 
-def generate_invoice_pdf(
+
+def generate_combined_invoice_pdf(
     out_dir: Path,
     invoice_number: str,
-    employee_name: str,
-    employee_company: str | None,
-    employee_start_date: str | None,
-    employee_email: str | None,
-    employee_preferred_vendor: str | None,
+    vendor_name: str,
+    company_name: str,
+    company_address: str | None,
     month_key: str,
-    hours: float,
-    rate: float,
-    amount: float,
+    lines: list[dict],
+    total_amount: float,
 ) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = "".join(c for c in employee_name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
+    safe_vendor = "".join(c for c in vendor_name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
+    safe_company = "".join(c for c in company_name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
     safe_month = month_key.replace("-", "_")
-    pdf_path = out_dir / f"{safe_name}_{safe_month}.pdf"
+    pdf_path = out_dir / f"{safe_vendor}_{safe_company}_{safe_month}.pdf"
 
     c = canvas.Canvas(str(pdf_path), pagesize=LETTER)
-    w, h = LETTER
+    width, height = LETTER
 
-    left = 60
-    right = w - 60
-    bar_height = 40
-    top_bar_y = h - 90
-    bottom_bar_y = 50
+    margin = 42
+    left = margin + 12
+    right = width - margin - 12
+    top = height - margin
+    bottom = margin
 
-    c.setStrokeColor(colors.HexColor("#D1D5DB"))
-    c.rect(24, 24, w - 48, h - 48, stroke=1, fill=0)
+    c.setStrokeColor(colors.HexColor("#3F4754"))
+    c.setLineWidth(1)
+    c.rect(margin, margin, width - margin * 2, height - margin * 2, stroke=1, fill=0)
 
-    c.setFillColor(colors.black)
-    c.setFont("Helvetica-Bold", 14)
-    c.drawCentredString(w / 2, h - 40, "INVOICE")
-
-    c.setFillColor(colors.HexColor("#F2F2F2"))
-    c.rect(left - 10, top_bar_y, w - 2 * (left - 10), bar_height, stroke=0, fill=1)
-    c.rect(left - 10, bottom_bar_y, w - 2 * (left - 10), bar_height, stroke=0, fill=1)
-    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 20)
+    c.drawString(left, top, "INVOICE")
 
     month_date = datetime.strptime(f"{month_key}-01", "%Y-%m-%d")
-    date_str = month_date.strftime("%d-%b-%y").lstrip("0")
-    currency_label = "$" if settings.DEFAULT_CURRENCY.upper() == "USD" else settings.DEFAULT_CURRENCY
-    company_addresses = {
-        "swift bot technologies": "1712 PIONEER AVE STE 500 CHEYENNE, WY 82001",
-        "swiftbot technologies": "1712 PIONEER AVE STE 500 CHEYENNE, WY 82001",
-        "open robo minds inc": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
-    }
-    company_name = employee_company or settings.COMPANY_NAME
-    company_key = company_name.strip().lower()
-    company_address = company_addresses.get(company_key, "Address on file")
+    date_str = month_date.strftime("%d-%b-%Y").lstrip("0")
 
     c.setFont("Helvetica-Bold", 11)
-    c.drawString(left, top_bar_y + 14, company_name)
+    c.drawString(left, top - 34, company_name)
     c.setFont("Helvetica", 8)
-    c.drawString(left, top_bar_y + 2, company_address)
-    c.setFont("Helvetica", 9)
-    c.drawString(right - 200, top_bar_y + 20, "Invoice Number")
-    c.drawString(right - 200, top_bar_y + 8, "Invoice Date")
+    if company_address:
+        for idx, line in enumerate(company_address.splitlines()[:3]):
+            c.drawString(left, top - 48 - (idx * 10), line)
+
+    c.setFont("Helvetica", 10)
+    c.drawRightString(right, top - 20, f"Invoice Number  {invoice_number}")
+    c.drawRightString(right, top - 36, f"Invoice Date  {date_str}")
+    c.drawRightString(right, top - 52, f"Vendor  {vendor_name}")
+    c.drawRightString(right, top - 68, f"Period  {month_key}")
+
+    table_top = top - 110
+    header_y = table_top
+    c.setFillColor(colors.HexColor("#E5E7EB"))
+    c.rect(left - 10, header_y - 18, right - left + 20, 24, stroke=0, fill=1)
+    c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 9)
-    c.drawRightString(right, top_bar_y + 20, invoice_number)
-    c.drawRightString(right, top_bar_y + 8, date_str)
+    c.drawString(left, header_y - 2, "Employee")
+    c.drawString(left + 140, header_y - 2, "Role / Notes")
+    c.drawRightString(right - 150, header_y - 2, "Hours")
+    c.drawRightString(right - 85, header_y - 2, "Rate")
+    c.drawRightString(right, header_y - 2, "Amount")
 
-    y = top_bar_y - 40
+    y = header_y - 34
+    c.setFont("Helvetica", 8.5)
+    line_height = 18
+    currency = "$" if settings.DEFAULT_CURRENCY.upper() == "USD" else f"{settings.DEFAULT_CURRENCY} "
+
+    def start_new_page() -> float:
+        c.showPage()
+        c.setStrokeColor(colors.HexColor("#3F4754"))
+        c.setLineWidth(1)
+        c.rect(margin, margin, width - margin * 2, height - margin * 2, stroke=1, fill=0)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(left, top, f"INVOICE CONT. - {invoice_number}")
+        c.setFillColor(colors.HexColor("#E5E7EB"))
+        c.rect(left - 10, top - 42, right - left + 20, 24, stroke=0, fill=1)
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(left, top - 26, "Employee")
+        c.drawString(left + 140, top - 26, "Role / Notes")
+        c.drawRightString(right - 150, top - 26, "Hours")
+        c.drawRightString(right - 85, top - 26, "Rate")
+        c.drawRightString(right, top - 26, "Amount")
+        c.setFont("Helvetica", 8.5)
+        return top - 58
+
+    for row in lines:
+        if y < bottom + 90:
+            y = start_new_page()
+
+        employee_label = row["employee_name"]
+        notes = " | ".join(part for part in [row.get("role") or "", row.get("notes") or "", row.get("comments") or ""] if part)
+        c.drawString(left, y, employee_label[:30])
+        c.drawString(left + 140, y, notes[:48] if notes else "-")
+        c.drawRightString(right - 150, y, f"{float(row['hours']):.2f}")
+        c.drawRightString(right - 85, y, f"{currency}{float(row['rate']):,.2f}")
+        c.drawRightString(right, y, f"{currency}{float(row['amount']):,.2f}")
+        y -= line_height
+
+    footer_y = max(y - 12, bottom + 26)
+    c.setFillColor(colors.HexColor("#E5E7EB"))
+    c.rect(left - 10, footer_y - 10, right - left + 20, 26, stroke=0, fill=1)
+    c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(left, y, "Employee")
-    y -= 14
-    c.setFont("Helvetica", 9)
-    c.drawString(left, y, f"Name: {employee_name}")
-    y -= 12
-    c.drawString(left, y, f"{employee_preferred_vendor or 'N/A'}")
+    c.drawString(left, footer_y + 2, "Thanks for your business")
+    c.drawRightString(right - 60, footer_y + 2, "Total")
+    c.drawRightString(right, footer_y + 2, f"{currency}{total_amount:,.2f}")
 
-    y -= 26
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(left, y, "Description")
-    c.drawRightString(right - 160, y, "Hours")
-    c.drawRightString(right - 80, y, "Rate")
-    c.drawRightString(right, y, "Amount")
-
-    y -= 10
-    c.line(left, y, right, y)
-    y -= 16
-
-    c.setFont("Helvetica", 9)
-    c.drawString(left, y, f"{employee_name} — {month_key}")
-    c.drawRightString(right - 160, y, f"{hours:.2f}")
-    c.drawRightString(right - 80, y, f"{currency_label}{rate:,.2f}")
-    c.drawRightString(right, y, f"{currency_label}{amount:,.2f}")
-
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(left, bottom_bar_y + 14, "Thanks for your business")
-    c.setFont("Helvetica-Bold", 10)
-    c.drawRightString(right - 60, bottom_bar_y + 14, "Total")
-    c.drawRightString(right, bottom_bar_y + 14, f"{currency_label}{amount:,.2f}")
-
-    c.showPage()
     c.save()
     return pdf_path

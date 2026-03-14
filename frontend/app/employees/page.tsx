@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Shell from "@/components/Shell";
-import { apiGet, apiPost } from "@/app/api";
+import { apiDelete, apiGet, apiPost, apiPut } from "@/app/api";
 
 type Employee = {
   id: number;
@@ -10,9 +10,7 @@ type Employee = {
   hourly_rate: number;
   email?: string | null;
   start_date?: string | null;
-  company?: string | null;
-  preferred_vendor_id?: number | null;
-  lifetime_hours: number;
+  notes?: string | null;
 };
 
 type Vendor = {
@@ -21,581 +19,301 @@ type Vendor = {
   email: string;
 };
 
-export default function EmployeesPage() {
-  function authHeaders() {
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }
+type Company = {
+  id: number;
+  name: string;
+  address?: string | null;
+};
 
+export default function DirectoryPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [vendorName, setVendorName] = useState("");
-  const [vendorEmail, setVendorEmail] = useState("");
-  const [editingVendorId, setEditingVendorId] = useState<number | null>(null);
-  const [editVendorName, setEditVendorName] = useState("");
-  const [editVendorEmail, setEditVendorEmail] = useState("");
-  const [name, setName] = useState("");
-  const [rate, setRate] = useState("");
-  const [email, setEmail] = useState("");
-  const [company, setCompany] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [preferredVendor, setPreferredVendor] = useState("");
-  const [err, setErr] = useState<string | null>(null);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editRate, setEditRate] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editCompany, setEditCompany] = useState("");
-  const [editStartDate, setEditStartDate] = useState("");
-  const [editPreferredVendor, setEditPreferredVendor] = useState("");
-  const [monthKey, setMonthKey] = useState("2025-12");
-  const [monthlyHours, setMonthlyHours] = useState<Record<number, number>>({});
-  const [employeeVendorFilter, setEmployeeVendorFilter] = useState<string>("all");
+
+  const [employeeForm, setEmployeeForm] = useState({ name: "", hourly_rate: "", email: "", start_date: "", notes: "" });
+  const [vendorForm, setVendorForm] = useState({ name: "", email: "" });
+  const [companyForm, setCompanyForm] = useState({ name: "", address: "" });
+
+  const [editingEmployeeId, setEditingEmployeeId] = useState<number | null>(null);
+  const [editingVendorId, setEditingVendorId] = useState<number | null>(null);
+  const [editingCompanyId, setEditingCompanyId] = useState<number | null>(null);
+
+  const [draftEmployee, setDraftEmployee] = useState(employeeForm);
+  const [draftVendor, setDraftVendor] = useState(vendorForm);
+  const [draftCompany, setDraftCompany] = useState(companyForm);
 
   async function refresh() {
-    setErr(null);
     setLoading(true);
+    setError(null);
     try {
-      const emps = await apiGet<Employee[]>("/employees");
-      const vends = await apiGet<Vendor[]>("/vendors");
-      setEmployees(emps);
-      setVendors(vends);
-      
-      // Fetch monthly hours for each employee
-      const hours: Record<number, number> = {};
-      for (const emp of emps) {
-        try {
-          const res = await apiGet<any>(`/employees/${emp.id}/monthly_hours/${monthKey}`);
-          hours[emp.id] = res.hours || 0;
-        } catch {
-          hours[emp.id] = 0;
-        }
-      }
-      setMonthlyHours(hours);
-    } catch (e: any) {
-      setErr(e.message);
+      const [employeesData, vendorsData, companiesData] = await Promise.all([
+        apiGet<Employee[]>("/employees"),
+        apiGet<Vendor[]>("/vendors"),
+        apiGet<Company[]>("/companies"),
+      ]);
+      setEmployees(employeesData);
+      setVendors(vendorsData);
+      setCompanies(companiesData);
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { refresh(); }, [monthKey]);
+  useEffect(() => {
+    refresh();
+  }, []);
 
-  async function addEmployee() {
-    setErr(null);
-    if (!name || !rate || !company || !preferredVendor) {
-      setErr("Name, hourly rate, company, and preferred vendor are required");
-      return;
-    }
+  async function createEmployee() {
     try {
       await apiPost("/employees", {
-        name,
-        hourly_rate: Number(rate),
-        email: email || null,
-        company,
-        start_date: startDate || null,
-        preferred_vendor_id: Number(preferredVendor),
+        name: employeeForm.name,
+        hourly_rate: Number(employeeForm.hourly_rate || 0),
+        email: employeeForm.email || null,
+        start_date: employeeForm.start_date || null,
+        notes: employeeForm.notes || null,
       });
-      setName(""); setRate(""); setEmail(""); setCompany(""); setStartDate(""); setPreferredVendor("");
+      setEmployeeForm({ name: "", hourly_rate: "", email: "", start_date: "", notes: "" });
       await refresh();
-    } catch (e: any) {
-      setErr(e.message);
+    } catch (err: any) {
+      setError(err.message);
     }
   }
 
-  async function deleteEmployee(id: number) {
-    setErr(null);
+  async function createVendor() {
     try {
-      const API = process.env.NEXT_PUBLIC_API_URL || "/api";
-      const res = await fetch(`${API}/employees/${id}`, {
-        method: "DELETE",
-        headers: {
-          ...authHeaders(),
-        },
+      await apiPost("/vendors", vendorForm);
+      setVendorForm({ name: "", email: "" });
+      await refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function createCompany() {
+    try {
+      await apiPost("/companies", { name: companyForm.name, address: companyForm.address || null });
+      setCompanyForm({ name: "", address: "" });
+      await refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function saveEmployee(id: number) {
+    try {
+      await apiPut(`/employees/${id}`, {
+        name: draftEmployee.name,
+        hourly_rate: Number(draftEmployee.hourly_rate || 0),
+        email: draftEmployee.email || null,
+        start_date: draftEmployee.start_date || null,
+        notes: draftEmployee.notes || null,
       });
-      if (!res.ok) throw new Error(await res.text());
+      setEditingEmployeeId(null);
       await refresh();
-    } catch (e: any) {
-      setErr(e.message);
+    } catch (err: any) {
+      setError(err.message);
     }
   }
 
-  async function startEdit(emp: Employee) {
-    setEditingId(emp.id);
-    setEditName(emp.name);
-    setEditRate(emp.hourly_rate.toString());
-    setEditEmail(emp.email || "");
-    setEditCompany(emp.company || "");
-    setEditStartDate(emp.start_date || "");
-    setEditPreferredVendor(emp.preferred_vendor_id ? emp.preferred_vendor_id.toString() : "");
-  }
-
-  async function saveEdit(id: number) {
-    setErr(null);
-    if (!editName || !editRate || !editCompany || !editPreferredVendor) {
-      setErr("Name, hourly rate, company, and preferred vendor are required");
-      return;
-    }
+  async function saveVendor(id: number) {
     try {
-      const API = process.env.NEXT_PUBLIC_API_URL || "/api";
-      const res = await fetch(`${API}/employees/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders(),
-        },
-        body: JSON.stringify({
-          name: editName,
-          hourly_rate: Number(editRate),
-          email: editEmail || null,
-          company: editCompany,
-          start_date: editStartDate || null,
-          preferred_vendor_id: Number(editPreferredVendor),
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      setEditingId(null);
-      await refresh();
-    } catch (e: any) {
-      setErr(e.message);
-    }
-  }
-
-  async function cancelEdit() {
-    setEditingId(null);
-  }
-
-  async function addVendor() {
-    setErr(null);
-    if (!vendorName || !vendorEmail) {
-      setErr("Vendor name and email are required");
-      return;
-    }
-    try {
-      await apiPost("/vendors", { name: vendorName, email: vendorEmail });
-      setVendorName(""); setVendorEmail("");
-      await refresh();
-    } catch (e: any) {
-      setErr(e.message);
-    }
-  }
-
-  async function deleteVendor(id: number) {
-    setErr(null);
-    try {
-      const API = process.env.NEXT_PUBLIC_API_URL || "/api";
-      const res = await fetch(`${API}/vendors/${id}`, {
-        method: "DELETE",
-        headers: {
-          ...authHeaders(),
-        },
-      });
-      if (!res.ok) throw new Error(await res.text());
-      await refresh();
-    } catch (e: any) {
-      setErr(e.message);
-    }
-  }
-
-  function startVendorEdit(vendor: Vendor) {
-    setEditingVendorId(vendor.id);
-    setEditVendorName(vendor.name);
-    setEditVendorEmail(vendor.email);
-  }
-
-  async function saveVendorEdit(id: number) {
-    setErr(null);
-    if (!editVendorName || !editVendorEmail) {
-      setErr("Vendor name and email are required");
-      return;
-    }
-    try {
-      const API = process.env.NEXT_PUBLIC_API_URL || "/api";
-      const res = await fetch(`${API}/vendors/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders(),
-        },
-        body: JSON.stringify({ name: editVendorName, email: editVendorEmail }),
-      });
-      if (!res.ok) throw new Error(await res.text());
+      await apiPut(`/vendors/${id}`, draftVendor);
       setEditingVendorId(null);
       await refresh();
-    } catch (e: any) {
-      setErr(e.message);
+    } catch (err: any) {
+      setError(err.message);
     }
   }
 
-  function cancelVendorEdit() {
-    setEditingVendorId(null);
+  async function saveCompany(id: number) {
+    try {
+      await apiPut(`/companies/${id}`, { name: draftCompany.name, address: draftCompany.address || null });
+      setEditingCompanyId(null);
+      await refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function remove(path: string) {
+    try {
+      await apiDelete(path);
+      await refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
   }
 
   return (
     <Shell>
-      <div className="space-y-8">
-        {/* Header */}
-        <div>
-          <h2 className="text-3xl font-bold text-white mb-2">Employees</h2>
-          <p className="text-slate-400">Manage your contractors and set hourly rates</p>
+      <div className="space-y-6">
+        <div className="rounded-[28px] border border-[var(--line)] bg-[rgba(20,28,39,0.9)] p-7">
+          <div className="text-xs uppercase tracking-[0.28em] text-[var(--muted)]">Directory</div>
+          <h1 className="mt-3 text-4xl font-semibold text-white">Master records for workbook sheets.</h1>
+          <p className="mt-4 max-w-3xl text-sm leading-6 text-[var(--muted)]">
+            Maintain the employees, vendors, and companies that workbook rows reference. Sheets stay lightweight because the master data lives here.
+          </p>
         </div>
 
-        {/* Month Selector */}
-        <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm p-6">
-          <label className="block text-sm font-medium text-slate-300 mb-2">View Monthly Hours For:</label>
-          <input
-            className="w-full md:w-48 rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-            type="month"
-            value={monthKey}
-            onChange={e => setMonthKey(e.target.value)}
-          />
-        </div>
-
-        {/* Add Employee Form */}
-        <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm p-8">
-          <h3 className="text-lg font-semibold text-white mb-6">Add New Employee</h3>
-          <div className="space-y-4">
-            <div className="grid md:grid-cols-7 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-2">Full Name</label>
-                <input
-                  className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                  placeholder="John Smith"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-2">Hourly Rate ($)</label>
-                <input
-                  className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                  placeholder="50.00"
-                  value={rate}
-                  onChange={e => setRate(e.target.value)}
-                  type="number"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-2">Company</label>
-                <input
-                  className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                  placeholder="Swift Bot Technologies"
-                  value={company}
-                  onChange={e => setCompany(e.target.value)}
-                  list="company-options-add"
-                />
-                <datalist id="company-options-add">
-                  <option value="Swift Bot Technologies" />
-                  <option value="Open Robo Minds Inc" />
-                </datalist>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-2">Preferred Vendor</label>
-                <select
-                  className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                  value={preferredVendor}
-                  onChange={e => setPreferredVendor(e.target.value)}
-                >
-                  <option value="">Select vendor</option>
-                  {vendors.map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-2">Start Date</label>
-                <input
-                  className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                  value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
-                  type="date"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-2">Email (Optional)</label>
-                <input
-                  className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                  placeholder="john@example.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  type="email"
-                />
-              </div>
-              <div className="flex items-end">
-                <button
-                  onClick={addEmployee}
-                  className="w-full rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 text-sm font-semibold transition-colors"
-                >
-                  Add Employee
-                </button>
-              </div>
-            </div>
-            {err && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3">{err}</div>}
+        {error && (
+          <div className="rounded-[20px] border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">
+            {error}
           </div>
-        </div>
+        )}
 
-        {/* Vendors */}
-        <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm p-8">
-          <h3 className="text-lg font-semibold text-white mb-6">Preferred Vendors</h3>
-          <div className="grid md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-2">Company Name</label>
-              <input
-                className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                placeholder="Vendor Co."
-                value={vendorName}
-                onChange={e => setVendorName(e.target.value)}
-              />
+        <div className="grid gap-6 xl:grid-cols-3">
+          <section className="rounded-[24px] border border-[var(--line)] bg-[rgba(12,17,24,0.82)] p-5">
+            <h2 className="text-xl font-semibold text-white">Employees</h2>
+            <div className="mt-4 space-y-3">
+              <input value={employeeForm.name} onChange={(e) => setEmployeeForm({ ...employeeForm, name: e.target.value })} placeholder="Full name" className="w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
+              <input value={employeeForm.hourly_rate} onChange={(e) => setEmployeeForm({ ...employeeForm, hourly_rate: e.target.value })} placeholder="Hourly rate" className="w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
+              <input value={employeeForm.email} onChange={(e) => setEmployeeForm({ ...employeeForm, email: e.target.value })} placeholder="Email" className="w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
+              <input value={employeeForm.start_date} onChange={(e) => setEmployeeForm({ ...employeeForm, start_date: e.target.value })} type="date" className="w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
+              <textarea value={employeeForm.notes} onChange={(e) => setEmployeeForm({ ...employeeForm, notes: e.target.value })} placeholder="Notes" className="min-h-[84px] w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
+              <button onClick={createEmployee} className="w-full rounded-2xl bg-[var(--accent)] px-4 py-3 font-semibold text-white">Add Employee</button>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-2">Vendor Email</label>
-              <input
-                className="w-full rounded-lg bg-slate-950/50 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                placeholder="billing@vendor.com, finance@vendor.com"
-                value={vendorEmail}
-                onChange={e => setVendorEmail(e.target.value)}
-                type="email"
-              />
-            </div>
-            <div className="flex items-end">
-              <button
-                onClick={addVendor}
-                className="w-full rounded-lg bg-slate-700 hover:bg-slate-600 text-white px-4 py-2.5 text-sm font-semibold transition-colors"
-              >
-                Add Vendor
-              </button>
-            </div>
-          </div>
-          <div className="mt-6 space-y-2 text-sm text-slate-300">
-            {vendors.length === 0 ? "No vendors yet." : vendors.map(v => (
-              <div key={v.id} className="flex items-center justify-between border border-slate-700/40 rounded-lg px-4 py-2">
-                {editingVendorId === v.id ? (
-                  <div className="flex flex-1 flex-wrap items-center gap-3">
-                    <input
-                      className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none"
-                      value={editVendorName}
-                      onChange={e => setEditVendorName(e.target.value)}
-                    />
-                    <input
-                      className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none w-56"
-                      value={editVendorEmail}
-                      onChange={e => setEditVendorEmail(e.target.value)}
-                    />
+            <div className="mt-5 space-y-3">
+              {loading ? (
+                <div className="text-sm text-[var(--muted)]">Loading...</div>
+              ) : (
+                employees.map((employee) => (
+                  <div key={employee.id} className="rounded-2xl border border-[var(--line)] bg-[rgba(20,28,39,0.72)] p-4">
+                    {editingEmployeeId === employee.id ? (
+                      <div className="space-y-2">
+                        <input value={draftEmployee.name} onChange={(e) => setDraftEmployee({ ...draftEmployee, name: e.target.value })} className="w-full rounded-xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-3 py-2 text-white outline-none focus:border-[var(--accent)]" />
+                        <input value={draftEmployee.hourly_rate} onChange={(e) => setDraftEmployee({ ...draftEmployee, hourly_rate: e.target.value })} className="w-full rounded-xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-3 py-2 text-white outline-none focus:border-[var(--accent)]" />
+                        <input value={draftEmployee.email} onChange={(e) => setDraftEmployee({ ...draftEmployee, email: e.target.value })} className="w-full rounded-xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-3 py-2 text-white outline-none focus:border-[var(--accent)]" />
+                        <input value={draftEmployee.start_date} onChange={(e) => setDraftEmployee({ ...draftEmployee, start_date: e.target.value })} type="date" className="w-full rounded-xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-3 py-2 text-white outline-none focus:border-[var(--accent)]" />
+                        <textarea value={draftEmployee.notes} onChange={(e) => setDraftEmployee({ ...draftEmployee, notes: e.target.value })} className="min-h-[68px] w-full rounded-xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-3 py-2 text-white outline-none focus:border-[var(--accent)]" />
+                        <div className="flex gap-2">
+                          <button onClick={() => saveEmployee(employee.id)} className="rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white">Save</button>
+                          <button onClick={() => setEditingEmployeeId(null)} className="rounded-xl border border-[var(--line-strong)] px-3 py-2 text-sm text-[var(--muted)]">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="font-semibold text-white">{employee.name}</div>
+                          <div className="mt-1 text-sm text-[var(--muted)]">${employee.hourly_rate.toFixed(2)}/hr</div>
+                          {employee.email && <div className="mt-1 text-sm text-[var(--muted)]">{employee.email}</div>}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingEmployeeId(employee.id);
+                              setDraftEmployee({
+                                name: employee.name,
+                                hourly_rate: employee.hourly_rate.toString(),
+                                email: employee.email || "",
+                                start_date: employee.start_date || "",
+                                notes: employee.notes || "",
+                              });
+                            }}
+                            className="rounded-xl border border-[var(--line-strong)] px-3 py-2 text-sm text-[var(--muted)]"
+                          >
+                            Edit
+                          </button>
+                          <button onClick={() => remove(`/employees/${employee.id}`)} className="rounded-xl border border-red-500/30 px-3 py-2 text-sm text-red-200">Delete</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <>
-                    <span>{v.name}</span>
-                    <span className="text-slate-400">{v.email}</span>
-                  </>
-                )}
-                <div className="flex items-center gap-2">
-                  {editingVendorId === v.id ? (
-                    <>
-                      <button
-                        onClick={() => saveVendorEdit(v.id)}
-                        className="text-xs rounded-lg border border-green-500/40 text-green-300 px-3 py-1.5 hover:bg-green-500/10 transition-colors"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={cancelVendorEdit}
-                        className="text-xs rounded-lg border border-slate-500/40 text-slate-300 px-3 py-1.5 hover:bg-slate-500/10 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-[24px] border border-[var(--line)] bg-[rgba(12,17,24,0.82)] p-5">
+            <h2 className="text-xl font-semibold text-white">Vendors</h2>
+            <div className="mt-4 space-y-3">
+              <input value={vendorForm.name} onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })} placeholder="Vendor name" className="w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
+              <textarea value={vendorForm.email} onChange={(e) => setVendorForm({ ...vendorForm, email: e.target.value })} placeholder="recipient1@vendor.com, recipient2@vendor.com" className="min-h-[84px] w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
+              <button onClick={createVendor} className="w-full rounded-2xl bg-[var(--accent)] px-4 py-3 font-semibold text-white">Add Vendor</button>
+            </div>
+            <div className="mt-5 space-y-3">
+              {vendors.map((vendor) => (
+                <div key={vendor.id} className="rounded-2xl border border-[var(--line)] bg-[rgba(20,28,39,0.72)] p-4">
+                  {editingVendorId === vendor.id ? (
+                    <div className="space-y-2">
+                      <input value={draftVendor.name} onChange={(e) => setDraftVendor({ ...draftVendor, name: e.target.value })} className="w-full rounded-xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-3 py-2 text-white outline-none focus:border-[var(--accent)]" />
+                      <textarea value={draftVendor.email} onChange={(e) => setDraftVendor({ ...draftVendor, email: e.target.value })} className="min-h-[84px] w-full rounded-xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-3 py-2 text-white outline-none focus:border-[var(--accent)]" />
+                      <div className="flex gap-2">
+                        <button onClick={() => saveVendor(vendor.id)} className="rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white">Save</button>
+                        <button onClick={() => setEditingVendorId(null)} className="rounded-xl border border-[var(--line-strong)] px-3 py-2 text-sm text-[var(--muted)]">Cancel</button>
+                      </div>
+                    </div>
                   ) : (
-                    <>
-                      <button
-                        onClick={() => startVendorEdit(v)}
-                        className="text-xs rounded-lg border border-blue-500/40 text-blue-300 px-3 py-1.5 hover:bg-blue-500/10 transition-colors"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => deleteVendor(v.id)}
-                        className="text-xs rounded-lg border border-red-500/40 text-red-300 px-3 py-1.5 hover:bg-red-500/10 transition-colors"
-                      >
-                        Remove
-                      </button>
-                    </>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="font-semibold text-white">{vendor.name}</div>
+                        <div className="mt-2 whitespace-pre-wrap text-sm text-[var(--muted)]">{vendor.email}</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingVendorId(vendor.id);
+                            setDraftVendor({ name: vendor.name, email: vendor.email });
+                          }}
+                          className="rounded-xl border border-[var(--line-strong)] px-3 py-2 text-sm text-[var(--muted)]"
+                        >
+                          Edit
+                        </button>
+                        <button onClick={() => remove(`/vendors/${vendor.id}`)} className="rounded-xl border border-red-500/30 px-3 py-2 text-sm text-red-200">Delete</button>
+                      </div>
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Employees List */}
-        <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/30 to-slate-900/30 backdrop-blur-sm overflow-hidden">
-          <div className="px-8 py-6 border-b border-slate-700/50">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <h3 className="text-lg font-semibold text-white">Active Employees</h3>
-              <select
-                className="rounded-lg bg-slate-950/50 border border-slate-700 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
-                value={employeeVendorFilter}
-                onChange={e => setEmployeeVendorFilter(e.target.value)}
-              >
-                <option value="all">All Vendors</option>
-                {vendors.map(v => (
-                  <option key={v.id} value={v.id.toString()}>{v.name}</option>
-                ))}
-              </select>
+              ))}
             </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-800/50 border-b border-slate-700/50">
-                <tr>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Name</th>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Hourly Rate</th>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Company</th>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Preferred Vendor</th>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Start Date</th>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Month Hours</th>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Lifetime Hours</th>
-                  <th className="px-8 py-3 text-left text-xs font-semibold text-slate-300">Email</th>
-                  <th className="px-8 py-3 text-right text-xs font-semibold text-slate-300">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700/30">
-                {loading ? (
-                  <tr><td colSpan={9} className="px-8 py-6 text-center text-slate-400">Loading...</td></tr>
-                ) : employees.length === 0 ? (
-                  <tr><td colSpan={9} className="px-8 py-6 text-center text-slate-400">No employees yet. Add one above.</td></tr>
-                ) : (
-                  employees
-                    .filter(e => employeeVendorFilter === "all" || e.preferred_vendor_id?.toString() === employeeVendorFilter)
-                    .map(e => (
-                    <tr key={e.id} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="px-8 py-4 text-sm font-medium text-white">
-                        {editingId === e.id ? (
-                          <input
-                            className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none"
-                            value={editName}
-                            onChange={ev => setEditName(ev.target.value)}
-                          />
-                        ) : (
-                          e.name
-                        )}
-                      </td>
-                      <td className="px-8 py-4 text-sm text-slate-300">
-                        {editingId === e.id ? (
-                          <div className="flex items-center">
-                            <span className="mr-1">$</span>
-                            <input
-                              className="w-16 rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none"
-                              type="number"
-                              step="0.01"
-                              value={editRate}
-                              onChange={ev => setEditRate(ev.target.value)}
-                            />
-                            <span className="ml-1">/hr</span>
-                          </div>
-                        ) : (
-                          `$${e.hourly_rate.toFixed(2)}/hr`
-                        )}
-                      </td>
-                      <td className="px-8 py-4 text-sm text-slate-300">
-                        {editingId === e.id ? (
-                          <>
-                            <input
-                              className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none w-40"
-                              value={editCompany}
-                              onChange={ev => setEditCompany(ev.target.value)}
-                              list="company-options"
-                            />
-                            <datalist id="company-options">
-                              <option value="Swift Bot Technologies" />
-                              <option value="ORM" />
-                            </datalist>
-                          </>
-                        ) : (
-                          e.company || "—"
-                        )}
-                      </td>
-                      <td className="px-8 py-4 text-sm text-slate-300">
-                        {editingId === e.id ? (
-                          <select
-                            className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none w-40"
-                            value={editPreferredVendor}
-                            onChange={ev => setEditPreferredVendor(ev.target.value)}
-                          >
-                            <option value="">Select vendor</option>
-                            {vendors.map(v => (
-                              <option key={v.id} value={v.id}>{v.name}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          vendors.find(v => v.id === Number(e.preferred_vendor_id))?.name || "—"
-                        )}
-                      </td>
-                      <td className="px-8 py-4 text-sm text-slate-300">
-                        {editingId === e.id ? (
-                          <input
-                            className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none"
-                            type="date"
-                            value={editStartDate}
-                            onChange={ev => setEditStartDate(ev.target.value)}
-                          />
-                        ) : (
-                          e.start_date || "—"
-                        )}
-                      </td>
-                      <td className="px-8 py-4 text-sm text-slate-300">{(monthlyHours[e.id] || 0).toFixed(1)}h</td>
-                      <td className="px-8 py-4 text-sm text-slate-300">{e.lifetime_hours.toFixed(1)}h</td>
-                      <td className="px-8 py-4 text-sm text-slate-400">
-                        {editingId === e.id ? (
-                          <input
-                            className="rounded bg-slate-950/50 border border-slate-600 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none w-40"
-                            type="email"
-                            value={editEmail}
-                            onChange={ev => setEditEmail(ev.target.value)}
-                          />
-                        ) : (
-                          e.email || "—"
-                        )}
-                      </td>
-                      <td className="px-8 py-4 text-right">
-                        {editingId === e.id ? (
-                          <div className="flex gap-2 justify-end">
-                            <button
-                              onClick={() => saveEdit(e.id)}
-                              className="text-xs rounded-lg border border-green-500/40 text-green-300 px-3 py-1.5 hover:bg-green-500/10 transition-colors"
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              className="text-xs rounded-lg border border-slate-500/40 text-slate-300 px-3 py-1.5 hover:bg-slate-500/10 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex gap-2 justify-end">
-                            <button
-                              onClick={() => startEdit(e)}
-                              className="text-xs rounded-lg border border-blue-500/40 text-blue-300 px-3 py-1.5 hover:bg-blue-500/10 transition-colors"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => deleteEmployee(e.id)}
-                              className="text-xs rounded-lg border border-red-500/40 text-red-300 px-3 py-1.5 hover:bg-red-500/10 transition-colors"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          </section>
+
+          <section className="rounded-[24px] border border-[var(--line)] bg-[rgba(12,17,24,0.82)] p-5">
+            <h2 className="text-xl font-semibold text-white">Companies</h2>
+            <div className="mt-4 space-y-3">
+              <input value={companyForm.name} onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })} placeholder="Company name" className="w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
+              <textarea value={companyForm.address} onChange={(e) => setCompanyForm({ ...companyForm, address: e.target.value })} placeholder="Address for combined invoices" className="min-h-[84px] w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
+              <button onClick={createCompany} className="w-full rounded-2xl bg-[var(--accent)] px-4 py-3 font-semibold text-white">Add Company</button>
+            </div>
+            <div className="mt-5 space-y-3">
+              {companies.map((company) => (
+                <div key={company.id} className="rounded-2xl border border-[var(--line)] bg-[rgba(20,28,39,0.72)] p-4">
+                  {editingCompanyId === company.id ? (
+                    <div className="space-y-2">
+                      <input value={draftCompany.name} onChange={(e) => setDraftCompany({ ...draftCompany, name: e.target.value })} className="w-full rounded-xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-3 py-2 text-white outline-none focus:border-[var(--accent)]" />
+                      <textarea value={draftCompany.address} onChange={(e) => setDraftCompany({ ...draftCompany, address: e.target.value })} className="min-h-[84px] w-full rounded-xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-3 py-2 text-white outline-none focus:border-[var(--accent)]" />
+                      <div className="flex gap-2">
+                        <button onClick={() => saveCompany(company.id)} className="rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white">Save</button>
+                        <button onClick={() => setEditingCompanyId(null)} className="rounded-xl border border-[var(--line-strong)] px-3 py-2 text-sm text-[var(--muted)]">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="font-semibold text-white">{company.name}</div>
+                        {company.address && <div className="mt-2 whitespace-pre-wrap text-sm text-[var(--muted)]">{company.address}</div>}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingCompanyId(company.id);
+                            setDraftCompany({ name: company.name, address: company.address || "" });
+                          }}
+                          className="rounded-xl border border-[var(--line-strong)] px-3 py-2 text-sm text-[var(--muted)]"
+                        >
+                          Edit
+                        </button>
+                        <button onClick={() => remove(`/companies/${company.id}`)} className="rounded-xl border border-red-500/30 px-3 py-2 text-sm text-red-200">Delete</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
       </div>
     </Shell>
