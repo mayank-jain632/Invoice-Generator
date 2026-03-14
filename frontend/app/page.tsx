@@ -61,13 +61,14 @@ type SummaryCard = { label: string; value: number };
 
 const editableColumns = ["employee_name", "role", "hours", "rate", "comments"] as const;
 type EditableColumn = (typeof editableColumns)[number];
+const spreadsheetBlankRows = 8;
 
 function currentMonthKey() {
   const now = new Date();
   return `${now.getFullYear()}-${`${now.getMonth() + 1}`.padStart(2, "0")}`;
 }
 
-function blankRow(order: number): SheetRow {
+function blankRow(): SheetRow {
   return {
     employee_name: "",
     role: "",
@@ -79,6 +80,26 @@ function blankRow(order: number): SheetRow {
   };
 }
 
+function isMeaningfulRow(row: SheetRow) {
+  return Boolean(
+    row.employee_id ||
+      row.employee_name.trim() ||
+      row.role?.trim() ||
+      row.comments?.trim() ||
+      row.hours ||
+      row.rate
+  );
+}
+
+function withSpreadsheetPadding(rows: SheetRow[]) {
+  const lastMeaningfulIndex = rows.reduce((lastIndex, row, index) => (isMeaningfulRow(row) ? index : lastIndex), -1);
+  const trimmed = lastMeaningfulIndex >= 0 ? rows.slice(0, lastMeaningfulIndex + 1) : [];
+  return [
+    ...trimmed,
+    ...Array.from({ length: spreadsheetBlankRows }, () => blankRow()),
+  ];
+}
+
 export default function WorkbookPage() {
   const [monthKey, setMonthKey] = useState(currentMonthKey());
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -88,7 +109,7 @@ export default function WorkbookPage() {
   const [summary, setSummary] = useState<SummaryCard[]>([]);
   const [selectedSheetId, setSelectedSheetId] = useState<number | null>(null);
   const [sheetDetail, setSheetDetail] = useState<WorkbookDetail | null>(null);
-  const [rows, setRows] = useState<SheetRow[]>([]);
+  const [rows, setRows] = useState<SheetRow[]>(() => withSpreadsheetPadding([]));
   const [recipients, setRecipients] = useState("");
   const [vendorFilter, setVendorFilter] = useState("all");
   const [companyFilter, setCompanyFilter] = useState("all");
@@ -109,6 +130,8 @@ export default function WorkbookPage() {
       return true;
     });
   }, [sheets, vendorFilter, companyFilter]);
+
+  const populatedRowCount = useMemo(() => rows.filter((row) => isMeaningfulRow(row)).length, [rows]);
 
   async function loadWorkspace() {
     setError(null);
@@ -144,17 +167,19 @@ export default function WorkbookPage() {
       const detail = await apiGet<WorkbookDetail>(`/workbook/sheets/${sheetId}?month_key=${encodeURIComponent(monthKey)}`);
       setSheetDetail(detail);
       setRows(
-        detail.rows.map((row) => ({
-          id: row.id,
-          employee_id: row.employee_id,
-          employee_name: row.employee_name,
-          role: row.role || "",
-          hours: row.hours,
-          rate: row.rate,
-          comments: row.comments || "",
-          invoice_status: row.invoice_status,
-          paid_status: row.paid_status,
-        }))
+        withSpreadsheetPadding(
+          detail.rows.map((row) => ({
+            id: row.id,
+            employee_id: row.employee_id,
+            employee_name: row.employee_name,
+            role: row.role || "",
+            hours: row.hours,
+            rate: row.rate,
+            comments: row.comments || "",
+            invoice_status: row.invoice_status,
+            paid_status: row.paid_status,
+          }))
+        )
       );
       setRecipients(detail.invoice?.manual_recipients || "");
       setDirty(false);
@@ -172,7 +197,7 @@ export default function WorkbookPage() {
       loadSheet(selectedSheetId);
     } else {
       setSheetDetail(null);
-      setRows([]);
+      setRows(withSpreadsheetPadding([]));
       setRecipients("");
       setDirty(false);
     }
@@ -184,37 +209,41 @@ export default function WorkbookPage() {
 
   function patchRow(rowIndex: number, key: EditableColumn, value: string) {
     setRows((current) =>
-      current.map((row, idx) => {
-        if (idx !== rowIndex) return row;
-        if (key === "employee_name") {
-          const employee = matchEmployee(value);
-          return {
-            ...row,
-            employee_name: value,
-            employee_id: employee?.id ?? null,
-            rate: employee && (!row.rate || row.rate === 0) ? employee.hourly_rate : row.rate,
-          };
-        }
-        if (key === "hours" || key === "rate") {
-          const numeric = value === "" ? 0 : Number(value);
-          return {
-            ...row,
-            [key]: Number.isFinite(numeric) ? numeric : row[key],
-          };
-        }
-        return { ...row, [key]: value };
-      })
+      withSpreadsheetPadding(
+        current.map((row, idx) => {
+          if (idx !== rowIndex) return row;
+          if (key === "employee_name") {
+            const employee = matchEmployee(value);
+            return {
+              ...row,
+              employee_name: value,
+              employee_id: employee?.id ?? null,
+              rate: employee && (!row.rate || row.rate === 0) ? employee.hourly_rate : row.rate,
+            };
+          }
+          if (key === "hours" || key === "rate") {
+            const numeric = value === "" ? 0 : Number(value);
+            return {
+              ...row,
+              [key]: Number.isFinite(numeric) ? numeric : row[key],
+            };
+          }
+          return { ...row, [key]: value };
+        })
+      )
     );
     setDirty(true);
   }
 
-  function addRow() {
-    setRows((current) => [...current, blankRow(current.length)]);
-    setDirty(true);
-  }
-
-  function removeRow(rowIndex: number) {
-    setRows((current) => current.filter((_, idx) => idx !== rowIndex));
+  function clearRow(rowIndex: number) {
+    setRows((current) =>
+      withSpreadsheetPadding(
+        current.map((row, idx) => {
+          if (idx !== rowIndex) return row;
+          return blankRow();
+        })
+      )
+    );
     setDirty(true);
   }
 
@@ -239,17 +268,19 @@ export default function WorkbookPage() {
       const detail = await apiPut<WorkbookDetail>(`/workbook/sheets/${selectedSheetId}?month_key=${encodeURIComponent(monthKey)}`, payload);
       setSheetDetail(detail);
       setRows(
-        detail.rows.map((row) => ({
-          id: row.id,
-          employee_id: row.employee_id,
-          employee_name: row.employee_name,
-          role: row.role || "",
-          hours: row.hours,
-          rate: row.rate,
-          comments: row.comments || "",
-          invoice_status: row.invoice_status,
-          paid_status: row.paid_status,
-        }))
+        withSpreadsheetPadding(
+          detail.rows.map((row) => ({
+            id: row.id,
+            employee_id: row.employee_id,
+            employee_name: row.employee_name,
+            role: row.role || "",
+            hours: row.hours,
+            rate: row.rate,
+            comments: row.comments || "",
+            invoice_status: row.invoice_status,
+            paid_status: row.paid_status,
+          }))
+        )
       );
       setDirty(false);
       setMessage("Sheet saved");
@@ -333,15 +364,14 @@ export default function WorkbookPage() {
   }
 
   async function copyGrid() {
-    const lines = rows.map((row) =>
+    const lines = rows
+      .filter((row) => isMeaningfulRow(row))
+      .map((row) =>
       [
         row.employee_name,
         row.role || "",
         `${row.hours || 0}`,
         `${row.rate || 0}`,
-        `${(row.hours || 0) * (row.rate || 0)}`,
-        row.invoice_status,
-        row.paid_status,
         row.comments || "",
       ].join("\t")
     );
@@ -380,8 +410,8 @@ export default function WorkbookPage() {
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      if (rowIndex === rows.length - 1) {
-        addRow();
+      if (rowIndex >= rows.length - 1) {
+        setRows((current) => withSpreadsheetPadding([...current, blankRow()]));
       }
       focusCell(Math.min(rowIndex + 1, rows.length), column);
     }
@@ -389,12 +419,12 @@ export default function WorkbookPage() {
 
   function handlePaste(rowIndex: number, column: EditableColumn, text: string) {
     const startColumnIndex = editableColumns.indexOf(column);
-    const nextRows = rows.slice();
-    const pastedRows = text.trimEnd().split(/\r?\n/).map((line) => line.split("\t"));
+    const nextRows = rows.map((row) => ({ ...row }));
+    const pastedRows = text.replace(/\r/g, "").trimEnd().split("\n").map((line) => line.split("\t"));
     pastedRows.forEach((cells, pastedRowIndex) => {
       const targetRowIndex = rowIndex + pastedRowIndex;
       while (nextRows.length <= targetRowIndex) {
-        nextRows.push(blankRow(nextRows.length));
+        nextRows.push(blankRow());
       }
       cells.forEach((cell, cellIndex) => {
         const targetColumn = editableColumns[startColumnIndex + cellIndex];
@@ -415,7 +445,7 @@ export default function WorkbookPage() {
         }
       });
     });
-    setRows(nextRows);
+    setRows(withSpreadsheetPadding(nextRows));
     setDirty(true);
   }
 
@@ -564,7 +594,7 @@ export default function WorkbookPage() {
                     <div className="mt-3 flex flex-wrap gap-2 text-xs">
                       <span className="rounded-full border border-[var(--line-strong)] px-3 py-1 text-[var(--muted)]">{monthKey}</span>
                       <span className="rounded-full border border-[var(--line-strong)] px-3 py-1 text-[var(--muted)]">
-                        {rows.length} row{rows.length === 1 ? "" : "s"}
+                        {populatedRowCount} row{populatedRowCount === 1 ? "" : "s"}
                       </span>
                       {sheetDetail.invoice && (
                         <>
@@ -580,9 +610,6 @@ export default function WorkbookPage() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <button onClick={addRow} className="rounded-2xl border border-[var(--line-strong)] px-4 py-2.5 text-sm font-semibold hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]">
-                      Add Row
-                    </button>
                     <button onClick={copyGrid} className="rounded-2xl border border-[var(--line-strong)] px-4 py-2.5 text-sm font-semibold hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]">
                       Copy Grid
                     </button>
@@ -606,6 +633,9 @@ export default function WorkbookPage() {
                 </div>
 
                 <div className="rounded-[24px] border border-[var(--line)] bg-[rgba(8,12,18,0.8)] p-4">
+                  <div className="mb-3 text-sm text-[var(--muted)]">
+                    Type directly into cells, choose from employee dropdowns, or paste blocks from Excel and Google Sheets.
+                  </div>
                   <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-[var(--muted)]">Manual Recipients</label>
                   <div className="grid gap-3 xl:grid-cols-[1fr_auto]">
                     <textarea
@@ -728,21 +758,14 @@ export default function WorkbookPage() {
                             </td>
                             <td className="px-3 py-3 text-right">
                               <button
-                                onClick={() => removeRow(rowIndex)}
+                                onClick={() => clearRow(rowIndex)}
                                 className="rounded-xl border border-red-500/30 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/10"
                               >
-                                Remove
+                                Clear
                               </button>
                             </td>
                           </tr>
                         ))}
-                        {rows.length === 0 && (
-                          <tr>
-                            <td colSpan={9} className="px-4 py-14 text-center text-[var(--muted)]">
-                              This sheet is empty for {monthKey}. Add rows manually or paste a tabular block starting in the first employee cell.
-                            </td>
-                          </tr>
-                        )}
                       </tbody>
                     </table>
                   </div>

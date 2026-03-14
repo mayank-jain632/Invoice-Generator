@@ -88,13 +88,13 @@ def get_pair_sheet_out(db: Session, pair_sheet: models.PairSheet, month_key: str
     month_total = 0.0
     if month_key:
         rows = rows_query.filter(models.SheetRow.month_key == month_key).all()
-        row_count = len(rows)
-        month_total = sum(float(row.hours or 0) * float(row.rate or 0) for row in rows)
         invoice = (
             db.query(models.CombinedInvoice)
             .filter(models.CombinedInvoice.pair_sheet_id == pair_sheet.id, models.CombinedInvoice.month_key == month_key)
             .first()
         )
+        row_count = len(build_visible_rows(db, pair_sheet, month_key, invoice))
+        month_total = sum(float(row.hours or 0) * float(row.rate or 0) for row in rows)
 
     return schemas.PairSheetOut(
         id=pair_sheet.id,
@@ -128,6 +128,72 @@ def serialize_row(row: models.SheetRow, invoice: models.CombinedInvoice | None) 
         invoice_status=invoice_status,
         paid_status=paid_status,
     )
+
+
+def synthetic_row(
+    employee: models.Employee,
+    sort_order: int,
+    invoice: models.CombinedInvoice | None,
+    role: str | None = None,
+    notes: str | None = None,
+) -> schemas.SheetRowOut:
+    invoice_status = "sent" if invoice and invoice.sent else "draft"
+    paid_status = "paid" if invoice and invoice.paid else "open"
+    return schemas.SheetRowOut(
+        id=None,
+        employee_id=employee.id,
+        employee_name=employee.name,
+        role=role,
+        notes=notes,
+        hours=0.0,
+        rate=float(employee.hourly_rate or 0),
+        amount=0.0,
+        comments=None,
+        sort_order=sort_order,
+        invoice_status=invoice_status,
+        paid_status=paid_status,
+    )
+
+
+def build_visible_rows(
+    db: Session,
+    pair_sheet: models.PairSheet,
+    month_key: str,
+    invoice: models.CombinedInvoice | None,
+) -> list[schemas.SheetRowOut]:
+    current_rows = (
+        db.query(models.SheetRow)
+        .filter(models.SheetRow.pair_sheet_id == pair_sheet.id, models.SheetRow.month_key == month_key)
+        .order_by(models.SheetRow.sort_order.asc(), models.SheetRow.id.asc())
+        .all()
+    )
+    visible_rows = [serialize_row(row, invoice) for row in current_rows]
+    seen_employee_ids = {row.employee_id for row in current_rows}
+
+    historical_defaults: dict[int, models.SheetRow] = {}
+    historical_rows = (
+        db.query(models.SheetRow)
+        .filter(models.SheetRow.pair_sheet_id == pair_sheet.id)
+        .order_by(models.SheetRow.updated_at.desc(), models.SheetRow.id.desc())
+        .all()
+    )
+    for historical_row in historical_rows:
+        if historical_row.employee_id in seen_employee_ids or historical_row.employee_id in historical_defaults:
+            continue
+        historical_defaults[historical_row.employee_id] = historical_row
+
+    for historical_row in sorted(historical_defaults.values(), key=lambda item: item.employee.name.lower()):
+        visible_rows.append(
+            synthetic_row(
+                employee=historical_row.employee,
+                sort_order=len(visible_rows),
+                invoice=invoice,
+                role=historical_row.role,
+                notes=historical_row.notes,
+            )
+        )
+
+    return visible_rows
 
 
 def resolve_employee(db: Session, row_in: schemas.SheetRowIn) -> models.Employee:
@@ -445,16 +511,10 @@ def get_pair_sheet(
         .filter(models.CombinedInvoice.pair_sheet_id == sheet_id, models.CombinedInvoice.month_key == month_key)
         .first()
     )
-    rows = (
-        db.query(models.SheetRow)
-        .filter(models.SheetRow.pair_sheet_id == sheet_id, models.SheetRow.month_key == month_key)
-        .order_by(models.SheetRow.sort_order.asc(), models.SheetRow.id.asc())
-        .all()
-    )
     return schemas.WorkbookSheetDetailOut(
         sheet=get_pair_sheet_out(db, sheet, month_key),
         month_key=month_key,
-        rows=[serialize_row(row, invoice) for row in rows],
+        rows=build_visible_rows(db, sheet, month_key, invoice),
         invoice=serialize_invoice(invoice) if invoice else None,
     )
 

@@ -82,7 +82,7 @@ class SheetRowIn(BaseModel):
 
 
 class SheetRowOut(BaseModel):
-    id: int
+    id: Optional[int]
     employee_id: int
     employee_name: str
     role: Optional[str]
