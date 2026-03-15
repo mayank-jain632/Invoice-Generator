@@ -11,9 +11,9 @@ from .settings import settings
 def resolve_company_address(company_name: str, company_address: str | None) -> str:
     normalized = company_name.strip().lower()
     preset_addresses = {
-        "swift bot technologies": "Swift Bot Technologies\n123 Automation Ave\nAustin, TX 78701",
-        "swiftbot technologies": "Swift Bot Technologies\n123 Automation Ave\nAustin, TX 78701",
-        "ariand": "Ariand\n456 Enterprise Blvd\nDallas, TX 75201",
+        "swift bot technologies": "1712 Pioneer Ave Ste 500 Cheyenne, WY 82001",
+        "swiftbot technologies": "1712 Pioneer Ave Ste 500 Cheyenne, WY 82001",
+        "Open Robo Minds Inc": "5760 Legacy Dr Ste B3 187 Plano TX 75024"
     }
     for key, value in preset_addresses.items():
         if key in normalized:
