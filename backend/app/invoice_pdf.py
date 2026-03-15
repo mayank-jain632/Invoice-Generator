@@ -15,6 +15,7 @@ def resolve_company_address(company_name: str, company_address: str | None) -> s
         "swift bot technologies": "1712 Pioneer Ave Ste 500 Cheyenne, WY 82001",
         "swiftbot technologies": "1712 Pioneer Ave Ste 500 Cheyenne, WY 82001",
         "Open Robo Minds Inc": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
+        "ORM": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
     }
     for key, value in preset_addresses.items():
         if key in normalized:
