@@ -75,14 +75,17 @@ def generate_combined_invoice_pdf(
     hours_x = right - 170
     rate_x = right - 92
     amount_x = right - 18
+    header_bar_bottom = header_y - 18
+    header_bar_height = 24
+    header_text_y = header_bar_bottom + 7
     c.setFillColor(colors.HexColor("#E5E7EB"))
-    c.rect(left - 10, header_y - 18, right - left + 20, 24, stroke=0, fill=1)
+    c.rect(left - 10, header_bar_bottom, right - left + 20, header_bar_height, stroke=0, fill=1)
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 9)
-    c.drawCentredString(employee_x, header_y - 2, "Employee")
-    c.drawCentredString(hours_x, header_y - 2, "Hours")
-    c.drawCentredString(rate_x, header_y - 2, "Rate")
-    c.drawCentredString(amount_x, header_y - 2, "Amount")
+    c.drawCentredString(employee_x, header_text_y, "Employee")
+    c.drawCentredString(hours_x, header_text_y, "Hours")
+    c.drawCentredString(rate_x, header_text_y, "Rate")
+    c.drawCentredString(amount_x, header_text_y, "Amount")
 
     y = header_y - 34
     c.setFont("Helvetica", 8.5)
@@ -96,14 +99,18 @@ def generate_combined_invoice_pdf(
         c.rect(margin, margin, width - margin * 2, height - margin * 2, stroke=1, fill=0)
         c.setFont("Helvetica-Bold", 14)
         c.drawString(left, top, f"INVOICE CONT. - {invoice_number}")
+        continued_header_y = top - 26
+        continued_header_bottom = top - 42
+        continued_header_height = 24
+        continued_header_text_y = continued_header_bottom + 7
         c.setFillColor(colors.HexColor("#E5E7EB"))
-        c.rect(left - 10, top - 42, right - left + 20, 24, stroke=0, fill=1)
+        c.rect(left - 10, continued_header_bottom, right - left + 20, continued_header_height, stroke=0, fill=1)
         c.setFillColor(colors.black)
         c.setFont("Helvetica-Bold", 9)
-        c.drawCentredString(employee_x, top - 26, "Employee")
-        c.drawCentredString(hours_x, top - 26, "Hours")
-        c.drawCentredString(rate_x, top - 26, "Rate")
-        c.drawCentredString(amount_x, top - 26, "Amount")
+        c.drawCentredString(employee_x, continued_header_text_y, "Employee")
+        c.drawCentredString(hours_x, continued_header_text_y, "Hours")
+        c.drawCentredString(rate_x, continued_header_text_y, "Rate")
+        c.drawCentredString(amount_x, continued_header_text_y, "Amount")
         c.setFont("Helvetica", 8.5)
         return top - 58
 
