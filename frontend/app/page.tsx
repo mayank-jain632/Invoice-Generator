@@ -393,7 +393,7 @@ export default function WorkbookPage() {
           )
       : rows
           .filter((row) => isMeaningfulRow(row))
-          .map((row) => [row.employee_name, `${row.hours || 0}`, `${row.rate || 0}`].join("\t")));
+          .map((row) => gridColumns.map((column) => cellValue(row, column)).join("\t")));
     if (lines.length === 0) return;
     await navigator.clipboard.writeText(lines.join("\n"));
     setMessage("Grid copied");

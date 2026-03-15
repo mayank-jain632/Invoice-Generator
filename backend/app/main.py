@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import models, schemas
@@ -70,6 +71,18 @@ def require_name(value: str, label: str) -> str:
     if not normalized:
         raise HTTPException(status_code=400, detail=f"{label} name is required")
     return normalized
+
+
+def find_vendor_by_name(db: Session, name: str) -> models.Vendor | None:
+    return db.query(models.Vendor).filter(func.lower(models.Vendor.name) == name.strip().lower()).first()
+
+
+def find_company_by_name(db: Session, name: str) -> models.Company | None:
+    return db.query(models.Company).filter(func.lower(models.Company.name) == name.strip().lower()).first()
+
+
+def find_employee_by_name(db: Session, name: str) -> models.Employee | None:
+    return db.query(models.Employee).filter(func.lower(models.Employee.name) == name.strip().lower()).first()
 
 
 def serialize_invoice(inv: models.CombinedInvoice) -> schemas.CombinedInvoiceOut:
@@ -208,11 +221,7 @@ def resolve_employee(db: Session, row_in: schemas.SheetRowIn) -> models.Employee
     if row_in.employee_id:
         employee = db.query(models.Employee).filter(models.Employee.id == row_in.employee_id).first()
     elif row_in.employee_name:
-        employee = (
-            db.query(models.Employee)
-            .filter(models.Employee.name.ilike(row_in.employee_name.strip()))
-            .first()
-        )
+        employee = find_employee_by_name(db, row_in.employee_name)
     if not employee:
         raise HTTPException(status_code=400, detail=f"Unknown employee reference: {row_in.employee_name or row_in.employee_id}")
     return employee
@@ -352,7 +361,7 @@ def list_vendors(db: Session = Depends(get_db), username: str = Depends(verify_t
 @app.post("/vendors", response_model=schemas.VendorOut)
 def create_vendor(payload: schemas.VendorCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     name = require_name(payload.name, "Vendor")
-    existing = db.query(models.Vendor).filter(models.Vendor.name == name).first()
+    existing = find_vendor_by_name(db, name)
     if existing:
         raise HTTPException(status_code=409, detail="Vendor name already exists")
     vendor = models.Vendor(name=name, email=payload.email)
@@ -367,7 +376,11 @@ def update_vendor(vendor_id: int, payload: schemas.VendorCreate, db: Session = D
     vendor = db.query(models.Vendor).filter(models.Vendor.id == vendor_id).first()
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
-    vendor.name = require_name(payload.name, "Vendor")
+    name = require_name(payload.name, "Vendor")
+    existing = find_vendor_by_name(db, name)
+    if existing and existing.id != vendor_id:
+        raise HTTPException(status_code=409, detail="Vendor name already exists")
+    vendor.name = name
     vendor.email = payload.email
     db.commit()
     db.refresh(vendor)
@@ -392,7 +405,7 @@ def list_companies(db: Session = Depends(get_db), username: str = Depends(verify
 @app.post("/companies", response_model=schemas.CompanyOut)
 def create_company(payload: schemas.CompanyCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     name = require_name(payload.name, "Company")
-    existing = db.query(models.Company).filter(models.Company.name == name).first()
+    existing = find_company_by_name(db, name)
     if existing:
         raise HTTPException(status_code=409, detail="Company name already exists")
     company = models.Company(name=name, address=payload.address)
@@ -407,7 +420,11 @@ def update_company(company_id: int, payload: schemas.CompanyCreate, db: Session 
     company = db.query(models.Company).filter(models.Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
-    company.name = require_name(payload.name, "Company")
+    name = require_name(payload.name, "Company")
+    existing = find_company_by_name(db, name)
+    if existing and existing.id != company_id:
+        raise HTTPException(status_code=409, detail="Company name already exists")
+    company.name = name
     company.address = payload.address
     db.commit()
     db.refresh(company)
@@ -432,7 +449,7 @@ def list_employees(db: Session = Depends(get_db), username: str = Depends(verify
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
     name = require_name(payload.name, "Employee")
-    existing = db.query(models.Employee).filter(models.Employee.name == name).first()
+    existing = find_employee_by_name(db, name)
     if existing:
         raise HTTPException(status_code=409, detail="Employee name already exists")
     employee = models.Employee(
@@ -453,7 +470,11 @@ def update_employee(employee_id: int, payload: schemas.EmployeeCreate, db: Sessi
     employee = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
-    employee.name = require_name(payload.name, "Employee")
+    name = require_name(payload.name, "Employee")
+    existing = find_employee_by_name(db, name)
+    if existing and existing.id != employee_id:
+        raise HTTPException(status_code=409, detail="Employee name already exists")
+    employee.name = name
     employee.hourly_rate = payload.hourly_rate
     employee.email = payload.email
     employee.start_date = payload.start_date
