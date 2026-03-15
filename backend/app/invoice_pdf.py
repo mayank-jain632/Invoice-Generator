@@ -71,15 +71,18 @@ def generate_combined_invoice_pdf(
 
     table_top = top - 110
     header_y = table_top
+    employee_x = left + 65
+    hours_x = right - 170
+    rate_x = right - 92
+    amount_x = right - 18
     c.setFillColor(colors.HexColor("#E5E7EB"))
     c.rect(left - 10, header_y - 18, right - left + 20, 24, stroke=0, fill=1)
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 9)
-    c.drawString(left, header_y - 2, "Employee")
-    c.drawString(left + 140, header_y - 2, "Role / Notes")
-    c.drawRightString(right - 150, header_y - 2, "Hours")
-    c.drawRightString(right - 85, header_y - 2, "Rate")
-    c.drawRightString(right, header_y - 2, "Amount")
+    c.drawCentredString(employee_x, header_y - 2, "Employee")
+    c.drawCentredString(hours_x, header_y - 2, "Hours")
+    c.drawCentredString(rate_x, header_y - 2, "Rate")
+    c.drawCentredString(amount_x, header_y - 2, "Amount")
 
     y = header_y - 34
     c.setFont("Helvetica", 8.5)
@@ -97,11 +100,10 @@ def generate_combined_invoice_pdf(
         c.rect(left - 10, top - 42, right - left + 20, 24, stroke=0, fill=1)
         c.setFillColor(colors.black)
         c.setFont("Helvetica-Bold", 9)
-        c.drawString(left, top - 26, "Employee")
-        c.drawString(left + 140, top - 26, "Role / Notes")
-        c.drawRightString(right - 150, top - 26, "Hours")
-        c.drawRightString(right - 85, top - 26, "Rate")
-        c.drawRightString(right, top - 26, "Amount")
+        c.drawCentredString(employee_x, top - 26, "Employee")
+        c.drawCentredString(hours_x, top - 26, "Hours")
+        c.drawCentredString(rate_x, top - 26, "Rate")
+        c.drawCentredString(amount_x, top - 26, "Amount")
         c.setFont("Helvetica", 8.5)
         return top - 58
 
@@ -110,12 +112,10 @@ def generate_combined_invoice_pdf(
             y = start_new_page()
 
         employee_label = row["employee_name"]
-        notes = " | ".join(part for part in [row.get("role") or "", row.get("notes") or "", row.get("comments") or ""] if part)
-        c.drawString(left, y, employee_label[:30])
-        c.drawString(left + 140, y, notes[:48] if notes else "-")
-        c.drawRightString(right - 150, y, f"{float(row['hours']):.2f}")
-        c.drawRightString(right - 85, y, f"{currency}{float(row['rate']):,.2f}")
-        c.drawRightString(right, y, f"{currency}{float(row['amount']):,.2f}")
+        c.drawCentredString(employee_x, y, employee_label[:30])
+        c.drawCentredString(hours_x, y, f"{float(row['hours']):.2f}")
+        c.drawCentredString(rate_x, y, f"{currency}{float(row['rate']):,.2f}")
+        c.drawCentredString(amount_x, y, f"{currency}{float(row['amount']):,.2f}")
         y -= line_height
 
     footer_y = max(y - 12, bottom + 26)
@@ -123,9 +123,9 @@ def generate_combined_invoice_pdf(
     c.rect(left - 10, footer_y - 10, right - left + 20, 26, stroke=0, fill=1)
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(left, footer_y + 2, "Thanks for your business")
-    c.drawRightString(right - 60, footer_y + 2, "Total")
-    c.drawRightString(right, footer_y + 2, f"{currency}{total_amount:,.2f}")
+    c.drawCentredString(left + 95, footer_y + 2, "Thanks for your business")
+    c.drawCentredString(right - 95, footer_y + 2, "Total")
+    c.drawCentredString(amount_x, footer_y + 2, f"{currency}{total_amount:,.2f}")
 
     c.save()
     return pdf_path
