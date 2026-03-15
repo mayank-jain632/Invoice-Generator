@@ -44,6 +44,10 @@ export default function DirectoryPage() {
   const [draftVendor, setDraftVendor] = useState(vendorForm);
   const [draftCompany, setDraftCompany] = useState(companyForm);
 
+  const employeeNameValid = employeeForm.name.trim().length > 0;
+  const vendorNameValid = vendorForm.name.trim().length > 0;
+  const companyNameValid = companyForm.name.trim().length > 0;
+
   async function refresh() {
     setLoading(true);
     setError(null);
@@ -68,9 +72,13 @@ export default function DirectoryPage() {
   }, []);
 
   async function createEmployee() {
+    if (!employeeNameValid) {
+      setError("Employee name is required");
+      return;
+    }
     try {
       await apiPost("/employees", {
-        name: employeeForm.name,
+        name: employeeForm.name.trim(),
         hourly_rate: Number(employeeForm.hourly_rate || 0),
         email: employeeForm.email || null,
         start_date: employeeForm.start_date || null,
@@ -84,8 +92,12 @@ export default function DirectoryPage() {
   }
 
   async function createVendor() {
+    if (!vendorNameValid) {
+      setError("Vendor name is required");
+      return;
+    }
     try {
-      await apiPost("/vendors", vendorForm);
+      await apiPost("/vendors", { ...vendorForm, name: vendorForm.name.trim() });
       setVendorForm({ name: "", email: "" });
       await refresh();
     } catch (err: any) {
@@ -94,8 +106,12 @@ export default function DirectoryPage() {
   }
 
   async function createCompany() {
+    if (!companyNameValid) {
+      setError("Company name is required");
+      return;
+    }
     try {
-      await apiPost("/companies", { name: companyForm.name, address: companyForm.address || null });
+      await apiPost("/companies", { name: companyForm.name.trim(), address: companyForm.address || null });
       setCompanyForm({ name: "", address: "" });
       await refresh();
     } catch (err: any) {
@@ -104,9 +120,13 @@ export default function DirectoryPage() {
   }
 
   async function saveEmployee(id: number) {
+    if (!draftEmployee.name.trim()) {
+      setError("Employee name is required");
+      return;
+    }
     try {
       await apiPut(`/employees/${id}`, {
-        name: draftEmployee.name,
+        name: draftEmployee.name.trim(),
         hourly_rate: Number(draftEmployee.hourly_rate || 0),
         email: draftEmployee.email || null,
         start_date: draftEmployee.start_date || null,
@@ -120,8 +140,12 @@ export default function DirectoryPage() {
   }
 
   async function saveVendor(id: number) {
+    if (!draftVendor.name.trim()) {
+      setError("Vendor name is required");
+      return;
+    }
     try {
-      await apiPut(`/vendors/${id}`, draftVendor);
+      await apiPut(`/vendors/${id}`, { ...draftVendor, name: draftVendor.name.trim() });
       setEditingVendorId(null);
       await refresh();
     } catch (err: any) {
@@ -130,8 +154,12 @@ export default function DirectoryPage() {
   }
 
   async function saveCompany(id: number) {
+    if (!draftCompany.name.trim()) {
+      setError("Company name is required");
+      return;
+    }
     try {
-      await apiPut(`/companies/${id}`, { name: draftCompany.name, address: draftCompany.address || null });
+      await apiPut(`/companies/${id}`, { name: draftCompany.name.trim(), address: draftCompany.address || null });
       setEditingCompanyId(null);
       await refresh();
     } catch (err: any) {
@@ -174,7 +202,7 @@ export default function DirectoryPage() {
               <input value={employeeForm.email} onChange={(e) => setEmployeeForm({ ...employeeForm, email: e.target.value })} placeholder="Email" className="w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
               <input value={employeeForm.start_date} onChange={(e) => setEmployeeForm({ ...employeeForm, start_date: e.target.value })} type="date" className="w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
               <textarea value={employeeForm.notes} onChange={(e) => setEmployeeForm({ ...employeeForm, notes: e.target.value })} placeholder="Notes" className="min-h-[84px] w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
-              <button onClick={createEmployee} className="w-full rounded-2xl bg-[var(--accent)] px-4 py-3 font-semibold text-white">Add Employee</button>
+              <button onClick={createEmployee} disabled={!employeeNameValid} className="w-full rounded-2xl bg-[var(--accent)] px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Add Employee</button>
             </div>
             <div className="mt-5 space-y-3">
               {loading ? (
@@ -232,7 +260,7 @@ export default function DirectoryPage() {
             <div className="mt-4 space-y-3">
               <input value={vendorForm.name} onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })} placeholder="Vendor name" className="w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
               <textarea value={vendorForm.email} onChange={(e) => setVendorForm({ ...vendorForm, email: e.target.value })} placeholder="recipient1@vendor.com, recipient2@vendor.com" className="min-h-[84px] w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
-              <button onClick={createVendor} className="w-full rounded-2xl bg-[var(--accent)] px-4 py-3 font-semibold text-white">Add Vendor</button>
+              <button onClick={createVendor} disabled={!vendorNameValid} className="w-full rounded-2xl bg-[var(--accent)] px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Add Vendor</button>
             </div>
             <div className="mt-5 space-y-3">
               {vendors.map((vendor) => (
@@ -276,7 +304,7 @@ export default function DirectoryPage() {
             <div className="mt-4 space-y-3">
               <input value={companyForm.name} onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })} placeholder="Company name" className="w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
               <textarea value={companyForm.address} onChange={(e) => setCompanyForm({ ...companyForm, address: e.target.value })} placeholder="Address for combined invoices" className="min-h-[84px] w-full rounded-2xl border border-[var(--line)] bg-[rgba(8,12,18,0.92)] px-4 py-3 text-white outline-none focus:border-[var(--accent)]" />
-              <button onClick={createCompany} className="w-full rounded-2xl bg-[var(--accent)] px-4 py-3 font-semibold text-white">Add Company</button>
+              <button onClick={createCompany} disabled={!companyNameValid} className="w-full rounded-2xl bg-[var(--accent)] px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Add Company</button>
             </div>
             <div className="mt-5 space-y-3">
               {companies.map((company) => (

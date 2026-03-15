@@ -65,6 +65,13 @@ def parse_recipients(recipients: list[str]) -> list[str]:
     return cleaned
 
 
+def require_name(value: str, label: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail=f"{label} name is required")
+    return normalized
+
+
 def serialize_invoice(inv: models.CombinedInvoice) -> schemas.CombinedInvoiceOut:
     return schemas.CombinedInvoiceOut(
         id=inv.id,
@@ -344,10 +351,11 @@ def list_vendors(db: Session = Depends(get_db), username: str = Depends(verify_t
 
 @app.post("/vendors", response_model=schemas.VendorOut)
 def create_vendor(payload: schemas.VendorCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    existing = db.query(models.Vendor).filter(models.Vendor.name == payload.name).first()
+    name = require_name(payload.name, "Vendor")
+    existing = db.query(models.Vendor).filter(models.Vendor.name == name).first()
     if existing:
         raise HTTPException(status_code=409, detail="Vendor name already exists")
-    vendor = models.Vendor(name=payload.name, email=payload.email)
+    vendor = models.Vendor(name=name, email=payload.email)
     db.add(vendor)
     db.commit()
     db.refresh(vendor)
@@ -359,7 +367,7 @@ def update_vendor(vendor_id: int, payload: schemas.VendorCreate, db: Session = D
     vendor = db.query(models.Vendor).filter(models.Vendor.id == vendor_id).first()
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
-    vendor.name = payload.name
+    vendor.name = require_name(payload.name, "Vendor")
     vendor.email = payload.email
     db.commit()
     db.refresh(vendor)
@@ -383,10 +391,11 @@ def list_companies(db: Session = Depends(get_db), username: str = Depends(verify
 
 @app.post("/companies", response_model=schemas.CompanyOut)
 def create_company(payload: schemas.CompanyCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    existing = db.query(models.Company).filter(models.Company.name == payload.name).first()
+    name = require_name(payload.name, "Company")
+    existing = db.query(models.Company).filter(models.Company.name == name).first()
     if existing:
         raise HTTPException(status_code=409, detail="Company name already exists")
-    company = models.Company(name=payload.name, address=payload.address)
+    company = models.Company(name=name, address=payload.address)
     db.add(company)
     db.commit()
     db.refresh(company)
@@ -398,7 +407,7 @@ def update_company(company_id: int, payload: schemas.CompanyCreate, db: Session 
     company = db.query(models.Company).filter(models.Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
-    company.name = payload.name
+    company.name = require_name(payload.name, "Company")
     company.address = payload.address
     db.commit()
     db.refresh(company)
@@ -422,11 +431,12 @@ def list_employees(db: Session = Depends(get_db), username: str = Depends(verify
 
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def create_employee(payload: schemas.EmployeeCreate, db: Session = Depends(get_db), username: str = Depends(verify_token)):
-    existing = db.query(models.Employee).filter(models.Employee.name == payload.name).first()
+    name = require_name(payload.name, "Employee")
+    existing = db.query(models.Employee).filter(models.Employee.name == name).first()
     if existing:
         raise HTTPException(status_code=409, detail="Employee name already exists")
     employee = models.Employee(
-        name=payload.name,
+        name=name,
         hourly_rate=payload.hourly_rate,
         email=payload.email,
         start_date=payload.start_date,
@@ -443,7 +453,7 @@ def update_employee(employee_id: int, payload: schemas.EmployeeCreate, db: Sessi
     employee = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
-    employee.name = payload.name
+    employee.name = require_name(payload.name, "Employee")
     employee.hourly_rate = payload.hourly_rate
     employee.email = payload.email
     employee.start_date = payload.start_date

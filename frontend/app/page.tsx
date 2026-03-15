@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { ClipboardEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
 import Shell from "@/components/Shell";
 import { apiGet, apiPost, apiPut } from "@/app/api";
 
@@ -23,10 +23,8 @@ type SheetRow = {
   id?: number;
   employee_id?: number | null;
   employee_name: string;
-  role?: string | null;
   hours: number;
   rate: number;
-  comments?: string | null;
   invoice_status: string;
   paid_status: string;
 };
@@ -44,14 +42,12 @@ type WorkbookDetail = {
   sheet: PairSheet;
   month_key: string;
   rows: Array<{
-    id: number;
+    id?: number;
     employee_id: number;
     employee_name: string;
-    role?: string | null;
     hours: number;
     rate: number;
     amount: number;
-    comments?: string | null;
     invoice_status: string;
     paid_status: string;
   }>;
@@ -59,8 +55,10 @@ type WorkbookDetail = {
 };
 type SummaryCard = { label: string; value: number };
 
-const editableColumns = ["employee_name", "role", "hours", "rate", "comments"] as const;
+const editableColumns = ["employee_name", "hours", "rate"] as const;
 type EditableColumn = (typeof editableColumns)[number];
+const gridColumns = ["employee_name", "hours", "rate", "amount", "invoice_status", "paid_status"] as const;
+type GridColumn = (typeof gridColumns)[number];
 const spreadsheetBlankRows = 8;
 
 function currentMonthKey() {
@@ -71,10 +69,8 @@ function currentMonthKey() {
 function blankRow(): SheetRow {
   return {
     employee_name: "",
-    role: "",
     hours: 0,
     rate: 0,
-    comments: "",
     invoice_status: "draft",
     paid_status: "open",
   };
@@ -84,8 +80,6 @@ function isMeaningfulRow(row: SheetRow) {
   return Boolean(
     row.employee_id ||
       row.employee_name.trim() ||
-      row.role?.trim() ||
-      row.comments?.trim() ||
       row.hours ||
       row.rate
   );
@@ -98,6 +92,11 @@ function withSpreadsheetPadding(rows: SheetRow[]) {
     ...trimmed,
     ...Array.from({ length: spreadsheetBlankRows }, () => blankRow()),
   ];
+}
+
+function cellValue(row: SheetRow, column: GridColumn) {
+  if (column === "amount") return (row.hours * row.rate).toFixed(2);
+  return `${row[column] ?? ""}`;
 }
 
 export default function WorkbookPage() {
@@ -116,6 +115,9 @@ export default function WorkbookPage() {
   const [newVendorId, setNewVendorId] = useState("");
   const [newCompanyId, setNewCompanyId] = useState("");
   const [activeCell, setActiveCell] = useState<{ row: number; column: EditableColumn } | null>(null);
+  const [selectionStart, setSelectionStart] = useState<{ row: number; column: GridColumn } | null>(null);
+  const [selectionEnd, setSelectionEnd] = useState<{ row: number; column: GridColumn } | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -132,6 +134,18 @@ export default function WorkbookPage() {
   }, [sheets, vendorFilter, companyFilter]);
 
   const populatedRowCount = useMemo(() => rows.filter((row) => isMeaningfulRow(row)).length, [rows]);
+
+  const selectionBounds = useMemo(() => {
+    if (!selectionStart || !selectionEnd) return null;
+    const startColumnIndex = gridColumns.indexOf(selectionStart.column);
+    const endColumnIndex = gridColumns.indexOf(selectionEnd.column);
+    return {
+      minRow: Math.min(selectionStart.row, selectionEnd.row),
+      maxRow: Math.max(selectionStart.row, selectionEnd.row),
+      minColumn: Math.min(startColumnIndex, endColumnIndex),
+      maxColumn: Math.max(startColumnIndex, endColumnIndex),
+    };
+  }, [selectionEnd, selectionStart]);
 
   async function loadWorkspace() {
     setError(null);
@@ -172,15 +186,15 @@ export default function WorkbookPage() {
             id: row.id,
             employee_id: row.employee_id,
             employee_name: row.employee_name,
-            role: row.role || "",
             hours: row.hours,
             rate: row.rate,
-            comments: row.comments || "",
             invoice_status: row.invoice_status,
             paid_status: row.paid_status,
           }))
         )
       );
+      setSelectionStart(null);
+      setSelectionEnd(null);
       setRecipients(detail.invoice?.manual_recipients || "");
       setDirty(false);
     } catch (err: any) {
@@ -202,6 +216,14 @@ export default function WorkbookPage() {
       setDirty(false);
     }
   }, [selectedSheetId, monthKey]);
+
+  useEffect(() => {
+    function stopSelecting() {
+      setIsSelecting(false);
+    }
+    window.addEventListener("mouseup", stopSelecting);
+    return () => window.removeEventListener("mouseup", stopSelecting);
+  }, []);
 
   function matchEmployee(name: string) {
     return employees.find((employee) => employee.name.trim().toLowerCase() === name.trim().toLowerCase());
@@ -258,10 +280,8 @@ export default function WorkbookPage() {
           id: row.id,
           employee_id: row.employee_id || undefined,
           employee_name: row.employee_name || undefined,
-          role: row.role || undefined,
           hours: row.hours || 0,
           rate: row.rate || 0,
-          comments: row.comments || undefined,
           sort_order: idx,
         })),
       };
@@ -273,10 +293,8 @@ export default function WorkbookPage() {
             id: row.id,
             employee_id: row.employee_id,
             employee_name: row.employee_name,
-            role: row.role || "",
             hours: row.hours,
             rate: row.rate,
-            comments: row.comments || "",
             invoice_status: row.invoice_status,
             paid_status: row.paid_status,
           }))
@@ -364,19 +382,48 @@ export default function WorkbookPage() {
   }
 
   async function copyGrid() {
-    const lines = rows
-      .filter((row) => isMeaningfulRow(row))
-      .map((row) =>
-      [
-        row.employee_name,
-        row.role || "",
-        `${row.hours || 0}`,
-        `${row.rate || 0}`,
-        row.comments || "",
-      ].join("\t")
-    );
+    const lines = (selectionBounds
+      ? rows
+          .slice(selectionBounds.minRow, selectionBounds.maxRow + 1)
+          .map((row) =>
+            gridColumns
+              .slice(selectionBounds.minColumn, selectionBounds.maxColumn + 1)
+              .map((column) => cellValue(row, column))
+              .join("\t")
+          )
+      : rows
+          .filter((row) => isMeaningfulRow(row))
+          .map((row) => [row.employee_name, `${row.hours || 0}`, `${row.rate || 0}`].join("\t")));
+    if (lines.length === 0) return;
     await navigator.clipboard.writeText(lines.join("\n"));
     setMessage("Grid copied");
+  }
+
+  function extendSheet() {
+    setRows((current) => [...current, ...Array.from({ length: spreadsheetBlankRows }, () => blankRow())]);
+    setMessage("Added more blank rows");
+  }
+
+  function beginSelection(row: number, column: GridColumn) {
+    setSelectionStart({ row, column });
+    setSelectionEnd({ row, column });
+    setIsSelecting(true);
+  }
+
+  function updateSelection(row: number, column: GridColumn) {
+    if (!isSelecting) return;
+    setSelectionEnd({ row, column });
+  }
+
+  function isCellSelected(rowIndex: number, column: GridColumn) {
+    if (!selectionBounds) return false;
+    const columnIndex = gridColumns.indexOf(column);
+    return (
+      rowIndex >= selectionBounds.minRow &&
+      rowIndex <= selectionBounds.maxRow &&
+      columnIndex >= selectionBounds.minColumn &&
+      columnIndex <= selectionBounds.maxColumn
+    );
   }
 
   function focusCell(row: number, column: EditableColumn) {
@@ -437,11 +484,9 @@ export default function WorkbookPage() {
           if (employee && (!currentRow.rate || currentRow.rate === 0)) {
             currentRow.rate = employee.hourly_rate;
           }
-        } else if (targetColumn === "hours" || targetColumn === "rate") {
+        } else {
           const numeric = Number(cell);
           currentRow[targetColumn] = Number.isFinite(numeric) ? numeric : 0;
-        } else {
-          currentRow[targetColumn] = cell;
         }
       });
     });
@@ -632,7 +677,7 @@ export default function WorkbookPage() {
                   </div>
                 </div>
 
-                <div className="rounded-[24px] border border-[var(--line)] bg-[rgba(8,12,18,0.8)] p-4">
+                <div className="rounded-[24px] border border-[var(--line)] bg-[rgba(7,10,15,0.92)] p-4">
                   <div className="mb-3 text-sm text-[var(--muted)]">
                     Type directly into cells, choose from employee dropdowns, or paste blocks from Excel and Google Sheets.
                   </div>
@@ -653,26 +698,42 @@ export default function WorkbookPage() {
                   </div>
                 </div>
 
-                <div className="overflow-hidden rounded-[24px] border border-[var(--line)]">
+                <div
+                  className="overflow-hidden rounded-[24px] border border-[var(--line)] bg-[rgba(5,7,11,0.98)]"
+                  onCopy={(event: ClipboardEvent<HTMLDivElement>) => {
+                    if (!selectionBounds) return;
+                    event.preventDefault();
+                    const lines = rows
+                      .slice(selectionBounds.minRow, selectionBounds.maxRow + 1)
+                      .map((row) =>
+                        gridColumns
+                          .slice(selectionBounds.minColumn, selectionBounds.maxColumn + 1)
+                          .map((column) => cellValue(row, column))
+                          .join("\t")
+                      );
+                    event.clipboardData.setData("text/plain", lines.join("\n"));
+                  }}
+                >
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
-                      <thead className="bg-[rgba(255,255,255,0.03)] text-left text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                      <thead className="bg-[rgba(255,255,255,0.02)] text-left text-[11px] uppercase tracking-[0.16em] text-[var(--muted)]">
                         <tr>
-                          <th className="px-4 py-3">Employee</th>
-                          <th className="px-4 py-3">Role / Notes</th>
-                          <th className="px-4 py-3">Hours</th>
-                          <th className="px-4 py-3">Rate</th>
-                          <th className="px-4 py-3">Amount</th>
-                          <th className="px-4 py-3">Invoice</th>
-                          <th className="px-4 py-3">Paid</th>
-                          <th className="px-4 py-3">Comments</th>
-                          <th className="px-4 py-3" />
+                          <th className="border-b border-r border-[var(--line)] px-4 py-3">Employee</th>
+                          <th className="border-b border-r border-[var(--line)] px-4 py-3">Hours</th>
+                          <th className="border-b border-r border-[var(--line)] px-4 py-3">Rate</th>
+                          <th className="border-b border-r border-[var(--line)] px-4 py-3">Amount</th>
+                          <th className="border-b border-r border-[var(--line)] px-4 py-3">Invoice</th>
+                          <th className="border-b border-[var(--line)] px-4 py-3">Paid</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-[var(--line)] bg-[rgba(10,15,22,0.92)]">
+                      <tbody className="bg-[rgba(5,7,11,0.98)]">
                         {rows.map((row, rowIndex) => (
                           <tr key={row.id ?? `row-${rowIndex}`} className="align-top">
-                            <td className="px-3 py-3">
+                            <td
+                              className={`border-b border-r border-[var(--line)] px-0 py-0 ${isCellSelected(rowIndex, "employee_name") ? "bg-[rgba(47,125,255,0.18)]" : ""}`}
+                              onMouseDown={() => beginSelection(rowIndex, "employee_name")}
+                              onMouseEnter={() => updateSelection(rowIndex, "employee_name")}
+                            >
                               <input
                                 data-cell-key={`${rowIndex}:employee_name`}
                                 value={row.employee_name}
@@ -684,24 +745,14 @@ export default function WorkbookPage() {
                                   handlePaste(rowIndex, "employee_name", event.clipboardData.getData("text"));
                                 }}
                                 list="employee-options"
-                                className="w-52 rounded-xl border border-[var(--line)] bg-[rgba(20,28,39,0.86)] px-3 py-2 text-white outline-none transition focus:border-[var(--accent)]"
+                                className={`w-full min-w-[260px] bg-transparent px-4 py-3 text-white outline-none ${activeCell?.row === rowIndex && activeCell.column === "employee_name" ? "ring-1 ring-inset ring-[var(--accent)]" : ""}`}
                               />
                             </td>
-                            <td className="px-3 py-3">
-                              <input
-                                data-cell-key={`${rowIndex}:role`}
-                                value={row.role || ""}
-                                onFocus={() => setActiveCell({ row: rowIndex, column: "role" })}
-                                onChange={(event) => patchRow(rowIndex, "role", event.target.value)}
-                                onKeyDown={(event) => handleCellKeyDown(event, rowIndex, "role")}
-                                onPaste={(event) => {
-                                  event.preventDefault();
-                                  handlePaste(rowIndex, "role", event.clipboardData.getData("text"));
-                                }}
-                                className="w-48 rounded-xl border border-[var(--line)] bg-[rgba(20,28,39,0.86)] px-3 py-2 text-white outline-none transition focus:border-[var(--accent)]"
-                              />
-                            </td>
-                            <td className="px-3 py-3">
+                            <td
+                              className={`border-b border-r border-[var(--line)] px-0 py-0 ${isCellSelected(rowIndex, "hours") ? "bg-[rgba(47,125,255,0.18)]" : ""}`}
+                              onMouseDown={() => beginSelection(rowIndex, "hours")}
+                              onMouseEnter={() => updateSelection(rowIndex, "hours")}
+                            >
                               <input
                                 data-cell-key={`${rowIndex}:hours`}
                                 value={row.hours}
@@ -712,10 +763,14 @@ export default function WorkbookPage() {
                                   event.preventDefault();
                                   handlePaste(rowIndex, "hours", event.clipboardData.getData("text"));
                                 }}
-                                className="w-24 rounded-xl border border-[var(--line)] bg-[rgba(20,28,39,0.86)] px-3 py-2 text-white outline-none transition focus:border-[var(--accent)]"
+                                className={`w-full min-w-[120px] bg-transparent px-4 py-3 text-white outline-none ${activeCell?.row === rowIndex && activeCell.column === "hours" ? "ring-1 ring-inset ring-[var(--accent)]" : ""}`}
                               />
                             </td>
-                            <td className="px-3 py-3">
+                            <td
+                              className={`border-b border-r border-[var(--line)] px-0 py-0 ${isCellSelected(rowIndex, "rate") ? "bg-[rgba(47,125,255,0.18)]" : ""}`}
+                              onMouseDown={() => beginSelection(rowIndex, "rate")}
+                              onMouseEnter={() => updateSelection(rowIndex, "rate")}
+                            >
                               <input
                                 data-cell-key={`${rowIndex}:rate`}
                                 value={row.rate}
@@ -726,48 +781,50 @@ export default function WorkbookPage() {
                                   event.preventDefault();
                                   handlePaste(rowIndex, "rate", event.clipboardData.getData("text"));
                                 }}
-                                className="w-28 rounded-xl border border-[var(--line)] bg-[rgba(20,28,39,0.86)] px-3 py-2 text-white outline-none transition focus:border-[var(--accent)]"
+                                className={`w-full min-w-[140px] bg-transparent px-4 py-3 text-white outline-none ${activeCell?.row === rowIndex && activeCell.column === "rate" ? "ring-1 ring-inset ring-[var(--accent)]" : ""}`}
                               />
                             </td>
-                            <td className="px-4 py-5 font-semibold text-white">
+                            <td
+                              className={`border-b border-r border-[var(--line)] px-4 py-3 font-semibold text-white ${isCellSelected(rowIndex, "amount") ? "bg-[rgba(47,125,255,0.18)]" : ""}`}
+                              onMouseDown={() => beginSelection(rowIndex, "amount")}
+                              onMouseEnter={() => updateSelection(rowIndex, "amount")}
+                            >
                               ${(row.hours * row.rate).toFixed(2)}
                             </td>
-                            <td className="px-4 py-5">
+                            <td
+                              className={`border-b border-r border-[var(--line)] px-4 py-3 ${isCellSelected(rowIndex, "invoice_status") ? "bg-[rgba(47,125,255,0.18)]" : ""}`}
+                              onMouseDown={() => beginSelection(rowIndex, "invoice_status")}
+                              onMouseEnter={() => updateSelection(rowIndex, "invoice_status")}
+                            >
                               <span className={`rounded-full px-3 py-1 text-xs ${row.invoice_status === "sent" ? "bg-[rgba(47,125,255,0.16)] text-[#7fb0ff]" : "bg-[rgba(255,255,255,0.06)] text-[var(--muted)]"}`}>
                                 {row.invoice_status}
                               </span>
                             </td>
-                            <td className="px-4 py-5">
+                            <td
+                              className={`border-b border-[var(--line)] px-4 py-3 ${isCellSelected(rowIndex, "paid_status") ? "bg-[rgba(47,125,255,0.18)]" : ""}`}
+                              onMouseDown={() => beginSelection(rowIndex, "paid_status")}
+                              onMouseEnter={() => updateSelection(rowIndex, "paid_status")}
+                              onDoubleClick={() => clearRow(rowIndex)}
+                            >
                               <span className={`rounded-full px-3 py-1 text-xs ${row.paid_status === "paid" ? "bg-[rgba(16,185,129,0.16)] text-[#86efac]" : "bg-[rgba(255,255,255,0.06)] text-[var(--muted)]"}`}>
                                 {row.paid_status}
                               </span>
-                            </td>
-                            <td className="px-3 py-3">
-                              <input
-                                data-cell-key={`${rowIndex}:comments`}
-                                value={row.comments || ""}
-                                onFocus={() => setActiveCell({ row: rowIndex, column: "comments" })}
-                                onChange={(event) => patchRow(rowIndex, "comments", event.target.value)}
-                                onKeyDown={(event) => handleCellKeyDown(event, rowIndex, "comments")}
-                                onPaste={(event) => {
-                                  event.preventDefault();
-                                  handlePaste(rowIndex, "comments", event.clipboardData.getData("text"));
-                                }}
-                                className="w-48 rounded-xl border border-[var(--line)] bg-[rgba(20,28,39,0.86)] px-3 py-2 text-white outline-none transition focus:border-[var(--accent)]"
-                              />
-                            </td>
-                            <td className="px-3 py-3 text-right">
-                              <button
-                                onClick={() => clearRow(rowIndex)}
-                                className="rounded-xl border border-red-500/30 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/10"
-                              >
-                                Clear
-                              </button>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-[var(--line)] bg-[rgba(8,11,16,0.96)] px-4 py-3">
+                    <div className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Drag across cells to highlight. Double-click a paid cell to clear that row.
+                    </div>
+                    <button
+                      onClick={extendSheet}
+                      className="rounded-2xl border border-[var(--line-strong)] px-4 py-2 text-sm font-semibold text-white transition hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                    >
+                      Extend Sheet
+                    </button>
                   </div>
                 </div>
                 <datalist id="employee-options">

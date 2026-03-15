@@ -3,17 +3,17 @@
 @tailwind utilities;
 
 :root {
-  --bg-0: #05070b;
-  --bg-1: #0b1017;
-  --bg-2: #121922;
-  --panel: #141c27;
-  --panel-strong: #1a2431;
-  --line: #2a3442;
-  --line-strong: #3d4d60;
-  --text: #e8edf5;
-  --muted: #93a1b4;
-  --accent: #2f7dff;
-  --accent-soft: rgba(47, 125, 255, 0.18);
+  --bg-0: #020306;
+  --bg-1: #05080d;
+  --bg-2: #0a0e14;
+  --panel: #0b1017;
+  --panel-strong: #101722;
+  --line: #1a2430;
+  --line-strong: #263446;
+  --text: #edf2fb;
+  --muted: #7d8da2;
+  --accent: #2a7cff;
+  --accent-soft: rgba(42, 124, 255, 0.14);
 }
 
 @layer base {
@@ -28,8 +28,8 @@
   body {
     @apply antialiased;
     background:
-      radial-gradient(circle at top left, rgba(47, 125, 255, 0.16), transparent 28%),
-      radial-gradient(circle at top right, rgba(255, 255, 255, 0.04), transparent 20%),
+      radial-gradient(circle at top left, rgba(42, 124, 255, 0.1), transparent 20%),
+      radial-gradient(circle at top right, rgba(42, 124, 255, 0.04), transparent 18%),
       linear-gradient(180deg, var(--bg-1), var(--bg-0));
     color: var(--text);
     min-height: 100vh;
