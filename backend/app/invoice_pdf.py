@@ -8,6 +8,19 @@ from reportlab.pdfgen import canvas
 from .settings import settings
 
 
+def resolve_company_address(company_name: str, company_address: str | None) -> str:
+    normalized = company_name.strip().lower()
+    preset_addresses = {
+        "swift bot technologies": "Swift Bot Technologies\n123 Automation Ave\nAustin, TX 78701",
+        "swiftbot technologies": "Swift Bot Technologies\n123 Automation Ave\nAustin, TX 78701",
+        "ariand": "Ariand\n456 Enterprise Blvd\nDallas, TX 75201",
+    }
+    for key, value in preset_addresses.items():
+        if key in normalized:
+            return value
+    return company_address or "Address on file"
+
+
 def generate_combined_invoice_pdf(
     out_dir: Path,
     invoice_number: str,
@@ -42,15 +55,15 @@ def generate_combined_invoice_pdf(
 
     month_date = datetime.strptime(f"{month_key}-01", "%Y-%m-%d")
     date_str = month_date.strftime("%d-%b-%Y").lstrip("0")
+    resolved_address = resolve_company_address(company_name, company_address)
 
     c.setFont("Helvetica-Bold", 11)
     c.drawString(left, top - 34, company_name)
     c.setFont("Helvetica", 8)
-    if company_address:
-        for idx, line in enumerate(company_address.splitlines()[:3]):
-            c.drawString(left, top - 48 - (idx * 10), line)
+    for idx, line in enumerate(resolved_address.splitlines()[:3]):
+        c.drawString(left, top - 48 - (idx * 10), line)
 
-    c.setFont("Helvetica", 10)
+    c.setFont("Helvetica", 8.5)
     c.drawRightString(right, top - 20, f"Invoice Number  {invoice_number}")
     c.drawRightString(right, top - 36, f"Invoice Date  {date_str}")
     c.drawRightString(right, top - 52, f"Vendor  {vendor_name}")

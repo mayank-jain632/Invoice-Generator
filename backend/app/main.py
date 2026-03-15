@@ -51,9 +51,11 @@ app.add_middleware(
 INVOICE_DIR = Path("/tmp/generated_invoices") if os.getenv("VERCEL") else Path("./generated_invoices")
 
 
-def invoice_number_for(sheet_id: int, month_key: str) -> str:
-    ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    return f"WB-{month_key.replace('-', '')}-{sheet_id}-{ts}"
+def invoice_number_for(company_name: str, vendor_name: str, month_key: str) -> str:
+    company_code = "".join(char for char in company_name.upper() if char.isalpha())[:3].ljust(3, "X")
+    vendor_code = "".join(char for char in vendor_name.upper() if char.isalpha())[:2].ljust(2, "X")
+    month_code = datetime.strptime(f"{month_key}-01", "%Y-%m-%d").strftime("%m%y")
+    return f"TX_{company_code}_{vendor_code}_{month_code}"
 
 
 def parse_recipients(recipients: list[str]) -> list[str]:
@@ -304,7 +306,7 @@ def build_invoice_from_sheet(db: Session, pair_sheet: models.PairSheet, month_ke
         invoice = models.CombinedInvoice(
             pair_sheet_id=pair_sheet.id,
             month_key=month_key,
-            invoice_number=invoice_number_for(pair_sheet.id, month_key),
+            invoice_number=invoice_number_for(pair_sheet.company.name, pair_sheet.vendor.name, month_key),
             total_amount=total_amount,
         )
         db.add(invoice)
