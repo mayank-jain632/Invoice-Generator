@@ -9,17 +9,32 @@ from .settings import settings
 
 
 def resolve_company_address(company_name: str, company_address: str | None) -> str:
-    print(f"Resolving address for company: '{company_name}' with provided address: '{company_address}'")
+    print(
+        "[invoice_pdf] resolve_company_address",
+        {
+            "company_name": company_name,
+            "company_address": company_address,
+        },
+    )
     normalized = company_name.strip().lower()
     preset_addresses = {
         "swift bot technologies": "1712 Pioneer Ave Ste 500 Cheyenne, WY 82001",
-        "swiftbot technologies": "1712 Pioneer Ave Ste 500 Cheyenne, WY 82001",
-        "Open Robo Minds Inc": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
-        "ORM": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
+        "swiftbot technologies": "1712 Pioneer Ave Ste 500 Cheyenne, WY 82001", # backup just in case
+        "open robo minds inc": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
+        "orm": "5760 Legacy Dr Ste B3 187 Plano TX 75024",
     }
+    print(
+        "[invoice_pdf] normalized lookup",
+        {
+            "normalized": normalized,
+            "preset_keys": list(preset_addresses.keys()),
+        },
+    )
     for key, value in preset_addresses.items():
         if key in normalized:
+            print("[invoice_pdf] matched preset", {"matched_key": key, "company_name": company_name})
             return value
+    print("[invoice_pdf] falling back", {"company_name": company_name, "company_address": company_address})
     return company_address or "Address on file"
 
 
