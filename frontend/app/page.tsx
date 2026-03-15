@@ -269,8 +269,18 @@ export default function WorkbookPage() {
     setDirty(true);
   }
 
+  function validateRowsBeforeSave() {
+    const invalidRowIndex = rows.findIndex((row) => !row.employee_name.trim() && (row.hours || row.rate));
+    if (invalidRowIndex >= 0) {
+      setError(`Row ${invalidRowIndex + 1} has hours or rate but no employee name`);
+      return false;
+    }
+    return true;
+  }
+
   async function saveSheet() {
     if (!selectedSheetId) return null;
+    if (!validateRowsBeforeSave()) return null;
     setSaving(true);
     setError(null);
     setMessage(null);

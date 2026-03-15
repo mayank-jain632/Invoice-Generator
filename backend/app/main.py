@@ -85,6 +85,13 @@ def find_employee_by_name(db: Session, name: str) -> models.Employee | None:
     return db.query(models.Employee).filter(func.lower(models.Employee.name) == name.strip().lower()).first()
 
 
+def create_employee_stub(db: Session, name: str, rate: float = 0.0) -> models.Employee:
+    employee = models.Employee(name=name.strip(), hourly_rate=float(rate or 0))
+    db.add(employee)
+    db.flush()
+    return employee
+
+
 def serialize_invoice(inv: models.CombinedInvoice) -> schemas.CombinedInvoiceOut:
     return schemas.CombinedInvoiceOut(
         id=inv.id,
@@ -222,6 +229,8 @@ def resolve_employee(db: Session, row_in: schemas.SheetRowIn) -> models.Employee
         employee = db.query(models.Employee).filter(models.Employee.id == row_in.employee_id).first()
     elif row_in.employee_name:
         employee = find_employee_by_name(db, row_in.employee_name)
+        if not employee and row_in.employee_name.strip():
+            employee = create_employee_stub(db, row_in.employee_name, row_in.rate)
     if not employee:
         raise HTTPException(status_code=400, detail=f"Unknown employee reference: {row_in.employee_name or row_in.employee_id}")
     return employee
